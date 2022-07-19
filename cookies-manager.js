@@ -1,5 +1,4 @@
-const { open } = require('sqlite');
-const sqlite3 = require('sqlite3');
+const db = require('better-sqlite3')
 
 const MAX_SQLITE_VARIABLES = 76;
 
@@ -12,16 +11,12 @@ const SAME_SITE = {
 
 class CookiesManager {
   static getDB(filePath, readOnly = true) {
-    const connectionOpts = {
-      filename: filePath,
-      driver: sqlite3.Database,
-    };
-
+    connectionOpts = {}
     if (readOnly) {
-      connectionOpts.mode = sqlite3.OPEN_READONLY;
+      connectionOpts.readonly = readOnly;
     }
 
-    return open(connectionOpts);
+    return db(filePath, connectionOpts);
   }
 
   static getChunckedInsertValues(cookiesArr) {
@@ -74,8 +69,8 @@ class CookiesManager {
     const cookies = [];
 
     try {
-      db = await this.getDB(filePath);
-      const cookiesRows = await db.all('select * from cookies');
+      db = this.getDB(filePath);
+      const cookiesRows = db.prepare('select * from cookies').all()
       for (const row of cookiesRows) {
         const {
           host_key,
