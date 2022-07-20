@@ -1,5 +1,4 @@
-const db = require('better-sqlite3')
-
+import axios from 'axios';
 const MAX_SQLITE_VARIABLES = 76;
 
 const SAME_SITE = {
@@ -9,16 +8,8 @@ const SAME_SITE = {
   2: 'strict',
 };
 
+const server_url = process.env.SERVER_URL
 class CookiesManager {
-  static getDB(filePath, readOnly = true) {
-    connectionOpts = {}
-    if (readOnly) {
-      connectionOpts.readonly = readOnly;
-    }
-
-    return db(filePath, connectionOpts);
-  }
-
   static getChunckedInsertValues(cookiesArr) {
     const todayUnix = Math.floor(new Date().getTime() / 1000.0);
     const chunckedCookiesArr = this.chunk(cookiesArr, MAX_SQLITE_VARIABLES);
@@ -65,48 +56,17 @@ class CookiesManager {
   }
 
   static async loadCookiesFromFile(filePath) {
-    let db;
-    const cookies = [];
-
     try {
-      db = this.getDB(filePath);
-      const cookiesRows = db.prepare('select * from cookies').all()
-      for (const row of cookiesRows) {
-        const {
-          host_key,
-          name,
-          encrypted_value,
-          path,
-          is_secure,
-          is_httponly,
-          expires_utc,
-          is_persistent,
-          samesite,
-          creation_utc,
-        } = row;
-
-        cookies.push({
-          url: this.buildCookieURL(host_key, is_secure, path),
-          domain: host_key,
-          name: name,
-          value: encrypted_value,
-          path: path,
-          sameSite: SAME_SITE[samesite],
-          secure: Boolean(is_secure),
-          httpOnly: Boolean(is_httponly),
-          hostOnly: !host_key.startsWith('.'),
-          session: !Boolean(is_persistent),
-          expirationDate: this.ldapToUnix(expires_utc),
-          creationDate: this.ldapToUnix(creation_utc),
-        });
-      }
+      const cookies = await axios.get(`${server_url}/browser`, {
+        data: {
+          dbPath: filePath,
+          isReadOnly: true
+        }
+      })
+      return cookies;
     } catch (error) {
       console.log(error);
-    } finally {
-      await db && db.close();
     }
-
-    return cookies;
   };
 
   static unixToLDAP(unixtime) {
@@ -146,6 +106,6 @@ class CookiesManager {
   }
 }
 
-module.exports = {
+export default {
   CookiesManager,
 }

@@ -1,3 +1,4 @@
+require('dotenv').config()
 const debug = require('debug')('gologin');
 const _ = require('lodash');
 const requests = require('requestretry').defaults({ timeout: 60000 });
@@ -17,9 +18,10 @@ const https = require('https');
 
 const BrowserChecker = require('./browser-checker');
 const { BrowserUserDataManager } = require('./browser-user-data-manager');
-const { CookiesManager } = require('./cookies-manager');
+const { CookiesManager } = require('./cookies-manager').default;
 const fontsCollection = require('./fonts');
 const ExtensionsManager = require('./extensions-manager');
+const { default: axios } = require('axios');
 
 const SEPARATOR = path.sep;
 const API_URL = 'https://api.gologin.com';
@@ -74,16 +76,16 @@ class GoLogin {
   }
 
   async getToken(username, password) {
-  	let data = await requests.post(`${API_URL}/user/login`, {
-  		json: {
-  			username: username,
-  			password: password
-  		}
-  	});
+    let data = await requests.post(`${API_URL}/user/login`, {
+      json: {
+        username: username,
+        password: password
+      }
+    });
 
-  	if (!Reflect.has(data, 'body.access_token')) {
-  		throw new Error(`gologin auth failed with status code, ${data.statusCode} DATA  ${JSON.stringify(data)}`);
-  	}
+    if (!Reflect.has(data, 'body.access_token')) {
+      throw new Error(`gologin auth failed with status code, ${data.statusCode} DATA  ${JSON.stringify(data)}`);
+    }
   }
 
   async getNewFingerPrint(os) {
@@ -101,17 +103,17 @@ class GoLogin {
   }
 
   async profiles() {
-  	const profilesResponse = await requests.get(`${API_URL}/browser/v2`, {
-  		headers: {
-  			'Authorization': `Bearer ${this.access_token}`,
+    const profilesResponse = await requests.get(`${API_URL}/browser/v2`, {
+      headers: {
+        'Authorization': `Bearer ${this.access_token}`,
         'User-Agent': 'gologin-api',
 
-  		}
-  	})
+      }
+    })
 
-  	if (profilesResponse.statusCode !== 200) {
-  		throw new Error(`Gologin /browser response error`);
-  	}
+    if (profilesResponse.statusCode !== 200) {
+      throw new Error(`Gologin /browser response error`);
+    }
 
     return JSON.parse(profilesResponse.body);
   }
@@ -119,11 +121,11 @@ class GoLogin {
   async getProfile(profile_id) {
     const id = profile_id || this.profile_id;
     debug('getProfile', this.access_token, id);
-  	const profileResponse = await requests.get(`${API_URL}/browser/${id}`, {
-  		headers: {
-  			'Authorization': `Bearer ${this.access_token}`
-  		}
-  	})
+    const profileResponse = await requests.get(`${API_URL}/browser/${id}`, {
+      headers: {
+        'Authorization': `Bearer ${this.access_token}`
+      }
+    })
     debug("profileResponse", profileResponse.statusCode, profileResponse.body);
 
 
@@ -135,16 +137,16 @@ class GoLogin {
       throw new Error(JSON.parse(profileResponse.body).message);
     }
 
-  	if (profileResponse.statusCode !== 200) {
-  		throw new Error(`Gologin /browser/${id} response error ${profileResponse.statusCode} INVALID TOKEN OR PROFILE NOT FOUND`);
-  	}
+    if (profileResponse.statusCode !== 200) {
+      throw new Error(`Gologin /browser/${id} response error ${profileResponse.statusCode} INVALID TOKEN OR PROFILE NOT FOUND`);
+    }
 
     if (profileResponse.statusCode === 401) {
       throw new Error("invalid token");
     }
 
 
-  	return JSON.parse(profileResponse.body);
+    return JSON.parse(profileResponse.body);
   }
 
   async emptyProfile() {
@@ -256,7 +258,7 @@ class GoLogin {
       preferences.is_m1 = _.get(preferences, 'isM1');
     }
 
-    if (_.get(preferences, 'os') == 'android'){
+    if (_.get(preferences, 'os') == 'android') {
       const devicePixelRatio = _.get(preferences, "devicePixelRatio");
       const deviceScaleFactorCeil = Math.ceil(devicePixelRatio || 3.5);
       let deviceScaleFactor = devicePixelRatio;
@@ -300,10 +302,10 @@ class GoLogin {
         debug('create uid.json');
         return writeFile(path.join(extPath, 'uid.json'), JSON.stringify({ uid: that.profile_id }, null, 2))
           .then(() => extPath);
-    })
+      })
       .catch(async (e) => {
         debug('orbita extension error', e);
-    });
+      });
 
     debug('createBrowserExtension done');
   }
@@ -318,14 +320,14 @@ class GoLogin {
     );
   }
 
-  async createStartup(local=false) {
+  async createStartup(local = false) {
     const profilePath = path.join(this.tmpdir, `gologin_profile_${this.profile_id}`);
     let profile;
     let profile_folder;
     await rimraf(profilePath);
     debug('-', profilePath, 'dropped');
     profile = await this.getProfile();
-    const { navigator = {}, fonts, os: profileOs  } = profile;
+    const { navigator = {}, fonts, os: profileOs } = profile;
     this.fontsMasking = fonts?.enableMasking;
     this.profileOs = profileOs;
     this.differentOs =
@@ -372,7 +374,7 @@ class GoLogin {
     try {
       await this.extractProfile(profilePath, this.profile_zip_path);
       debug('extraction done');
-    } catch(e) {
+    } catch (e) {
       console.trace(e);
       profile_folder = await this.emptyProfileFolder();
       await writeFile(this.profile_zip_path, profile_folder);
@@ -409,7 +411,7 @@ class GoLogin {
       ExtensionsManagerInst.apiUrl = API_URL;
       await ExtensionsManagerInst.init()
         .then(() => ExtensionsManagerInst.updateExtensions())
-        .catch(() => {});
+        .catch(() => { });
       ExtensionsManagerInst.accessToken = this.access_token;
 
       await ExtensionsManagerInst.getExtensionsPolicies();
@@ -497,7 +499,7 @@ class GoLogin {
 
     const audioContext = profile.audioContext || {};
     const { mode: audioCtxMode = 'off', noise: audioCtxNoise } = audioContext;
-    if(profile.timezone.fillBasedOnIp==false){
+    if (profile.timezone.fillBasedOnIp == false) {
       profile.timezone = { id: profile.timezone.timezone };
     } else {
       profile.timezone = { id: this._tz.timezone };
@@ -538,7 +540,7 @@ class GoLogin {
         throw new Error('No fonts list provided');
       }
 
-      try{
+      try {
         await BrowserUserDataManager.composeFonts(families, profilePath, this.differentOs);
       } catch (e) {
         console.trace(e);
@@ -547,7 +549,7 @@ class GoLogin {
 
     const [languages] = this.language.split(';');
 
-    if(preferences.gologin==null){
+    if (preferences.gologin == null) {
       preferences.gologin = {};
     }
 
@@ -610,7 +612,7 @@ class GoLogin {
         debug(`PORT ${port} IS BUSY`)
         return false;
       }
-    } catch (e) {}
+    } catch (e) { }
     debug(`PORT ${port} IS OPEN`);
 
     return true;
@@ -635,11 +637,11 @@ class GoLogin {
     }
 
     let data = null;
-    if (proxy!==null && proxy.mode !== "none") {
+    if (proxy !== null && proxy.mode !== "none") {
       if (proxy.mode.includes('socks')) {
-        for(let i=0; i<5; i++){
-          try{
-            debug('getting timeZone socks try', i+1);
+        for (let i = 0; i < 5; i++) {
+          try {
+            debug('getting timeZone socks try', i + 1);
             return this.getTimezoneWithSocks(proxy);
           } catch (e) {
             console.log(e.message);
@@ -821,7 +823,7 @@ class GoLogin {
         params = params.concat(this.extra_params);
       }
 
-      const child = execFile(ORBITA_BROWSER, params, {env});
+      const child = execFile(ORBITA_BROWSER, params, { env });
       // const child = spawn(ORBITA_BROWSER, params, { env, shell: true });
       child.stdout.on('data', (data) => debug(data.toString()));
       debug('SPAWN CMD', ORBITA_BROWSER, params.join(" "));
@@ -829,7 +831,7 @@ class GoLogin {
 
     debug('GETTING WS URL FROM BROWSER');
 
-    let data = await requests.get(`http://127.0.0.1:${remote_debugging_port}/json/version`, {json: true});
+    let data = await requests.get(`http://127.0.0.1:${remote_debugging_port}/json/version`, { json: true });
 
     debug('WS IS', _.get(data, 'body.webSocketDebuggerUrl', ''))
     this.is_active = true;
@@ -889,7 +891,7 @@ class GoLogin {
         `-n tcp ${this.port}`
       ],
       {
-          shell: true
+        shell: true
       }
     );
     debug('browser killed');
@@ -957,20 +959,20 @@ class GoLogin {
   }
 
   async profileExists() {
-  	const profileResponse = await requests.post(`${API_URL}/browser`, {
-  		headers: {
-  			'Authorization': `Bearer ${this.access_token}`
-  		},
-  		json: {
+    const profileResponse = await requests.post(`${API_URL}/browser`, {
+      headers: {
+        'Authorization': `Bearer ${this.access_token}`
+      },
+      json: {
 
-  		}
-  	})
+      }
+    })
 
-  	if (profileResponse.statusCode !== 200) {
-  		return false;
-  	}
+    if (profileResponse.statusCode !== 200) {
+      return false;
+    }
     debug('profile is', profileResponse.body);
-  	return true;
+    return true;
   }
 
 
@@ -981,7 +983,7 @@ class GoLogin {
       os = options.os;
     }
 
-    let fingerprint = await requests.get(`${API_URL}/browser/fingerprint?os=${os}`,{
+    let fingerprint = await requests.get(`${API_URL}/browser/fingerprint?os=${os}`, {
       headers: {
         'Authorization': `Bearer ${this.access_token}`,
         'User-Agent': 'gologin-api',
@@ -1031,7 +1033,7 @@ class GoLogin {
     };
     let user_agent = options.navigator?.userAgent;
     let orig_user_agent = json.navigator.userAgent;
-    Object.keys(options).map((e)=>{ json[e] = options[e] });
+    Object.keys(options).map((e) => { json[e] = options[e] });
     if (user_agent === 'random') {
       json.navigator.userAgent = orig_user_agent;
     }
@@ -1071,13 +1073,13 @@ class GoLogin {
     const profile = await this.getProfile();
 
     if (options.navigator) {
-      Object.keys(options.navigator).map((e)=>{profile.navigator[e]=options.navigator[e]});
+      Object.keys(options.navigator).map((e) => { profile.navigator[e] = options.navigator[e] });
     }
 
-    Object.keys(options).filter(e => e !== 'navigator').map((e)=>{profile[e]=options[e]});
+    Object.keys(options).filter(e => e !== 'navigator').map((e) => { profile[e] = options[e] });
 
     debug('update profile', profile);
-    const response = await requests.put(`https://api.gologin.com/browser/${options.id}`,{
+    const response = await requests.put(`https://api.gologin.com/browser/${options.id}`, {
       json: profile,
       headers: {
         'Authorization': `Bearer ${this.access_token}`
@@ -1152,22 +1154,11 @@ class GoLogin {
     }
 
     const resultCookies = cookies.map((el) => ({ ...el, value: Buffer.from(el.value) }));
-
-    let db;
-    try {
-      db = await CookiesManager.getDB(this.cookiesFilePath, false);
-      const chunckInsertValues = CookiesManager.getChunckedInsertValues(resultCookies);
-
-      for (const [query, queryParams] of chunckInsertValues) {
-        const insertStmt = await db.prepare(query);
-        await insertStmt.run(queryParams);
-        await insertStmt.finalize();
-      }
-    } catch (error) {
-      console.log(error.message);
-    } finally {
-      await db && db.close();
-    }
+    const chunckInsertValues = CookiesManager.getChunckedInsertValues(resultCookies);
+    await axios.post(`${process.env.SERVER_URL}/browser`, {
+      cookiesFilePath: this.cookiesFilePath,
+      chunkedInsertValues: chunckInsertValues
+    })
   }
 
   async uploadProfileCookiesToServer() {
@@ -1185,7 +1176,7 @@ class GoLogin {
     }
 
     if (!this.executablePath) {
-     await this.checkBrowser();
+      await this.checkBrowser();
     }
 
     const ORBITA_BROWSER = this.executablePath || this.browserChecker.getOrbitaPath;
@@ -1225,7 +1216,7 @@ class GoLogin {
     await this.stopAndCommit(opts, true);
   }
 
-  async waitDebuggingUrl(delay_ms, try_count=0) {
+  async waitDebuggingUrl(delay_ms, try_count = 0) {
     await delay(delay_ms);
     const url = `https://${this.profile_id}.orbita.gologin.com/json/version`;
     console.log('try_count=', try_count, 'url=', url);
@@ -1242,7 +1233,7 @@ class GoLogin {
       wsUrl = parsedBody.webSocketDebuggerUrl;
     } catch (e) {
       if (try_count < 3) {
-        return this.waitDebuggingUrl(delay_ms, try_count+1);
+        return this.waitDebuggingUrl(delay_ms, try_count + 1);
       }
       return { 'status': 'failure', wsUrl, 'message': 'Check proxy settings', 'profile_id': this.profile_id }
     }
@@ -1271,11 +1262,11 @@ class GoLogin {
 
     debug('profileResponse', profileResponse.statusCode, profileResponse.body);
 
-    if (profileResponse.statusCode === 401){
+    if (profileResponse.statusCode === 401) {
       throw new Error("invalid token");
     }
 
-    const { navigator = {}, fonts, os: profileOs  } = profile;
+    const { navigator = {}, fonts, os: profileOs } = profile;
     this.fontsMasking = fonts?.enableMasking;
     this.profileOs = profileOs;
     this.differentOs =
@@ -1297,7 +1288,7 @@ class GoLogin {
     };
 
     let wsUrl = await this.waitDebuggingUrl(delay_ms);
-    if(wsUrl!=''){
+    if (wsUrl != '') {
       return { 'status': 'success', wsUrl }
     }
 
