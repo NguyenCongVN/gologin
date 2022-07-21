@@ -1012,8 +1012,8 @@ class GoLogin {
     if (deviceMemory < 1) {
       deviceMemory = 1;
     }
-    // navigator.deviceMemory = deviceMemory*1024; fix failed api
-    navigator.deviceMemory = deviceMemory;
+    navigator.deviceMemory = deviceMemory*1024; //fix failed api
+    // navigator.deviceMemory = deviceMemory;
     webGLMetadata.mode = webGLMetadata.mode === 'noise' ? 'mask' : 'off';
 
     const json = {
