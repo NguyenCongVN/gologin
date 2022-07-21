@@ -18,7 +18,7 @@ const https = require('https');
 
 const BrowserChecker = require('./browser-checker');
 const { BrowserUserDataManager } = require('./browser-user-data-manager');
-const { CookiesManager } = require('./cookies-manager').default;
+const CookiesManager = require('./cookies-manager');
 const fontsCollection = require('./fonts');
 const ExtensionsManager = require('./extensions-manager');
 const { default: axios } = require('axios');
