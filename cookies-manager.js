@@ -106,6 +106,4 @@ class CookiesManager {
   }
 }
 
-export default {
-  CookiesManager,
-}
+module.exports = CookiesManager;
