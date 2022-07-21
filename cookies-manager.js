@@ -1,4 +1,4 @@
-import axios from 'axios';
+const axios = require('axios');
 const MAX_SQLITE_VARIABLES = 76;
 
 const SAME_SITE = {
