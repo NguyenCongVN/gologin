@@ -1252,6 +1252,8 @@ class GoLogin {
     */
 
     // if (profileResponse.body === 'ok') {
+
+    // Get profile if remote
     const profile = await this.getProfile();
 
     const profileResponse = await requests.post(`https://api.gologin.com/browser/${this.profile_id}/web`, {
@@ -1315,4 +1317,4 @@ class GoLogin {
   }
 }
 
-module.exports = GoLogin;
+module.exports = {GoLogin , debug};
