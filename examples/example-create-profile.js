@@ -1,11 +1,11 @@
 const puppeteer = require('puppeteer-core');
-const GoLogin = require('../gologin');
+const {GoLogin} = require('../gologin');
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 (async () =>{
     const GL = new GoLogin({
-        token: 'yU0token',
+        token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2MmY2NjVlNjViZTdjY2UzMDU4OWIwZmMiLCJ0eXBlIjoiZGV2Iiwiand0aWQiOiI2MmY2NjVmOTRlYjUwOTIxYjk1ZTllOTMifQ.sKtX2xgSCd_Waa-Ljju_Ox5d6bO542lyLdMOfnUQ7pE',
     });
     
     // next parameters are required for creating

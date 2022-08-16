@@ -1033,7 +1033,14 @@ class GoLogin {
     };
     let user_agent = options.navigator?.userAgent;
     let orig_user_agent = json.navigator.userAgent;
-    Object.keys(options).map((e) => { json[e] = options[e] });
+    Object.keys(options).map((e) => {
+      if (e === "navigator") {
+        json["navigator"] = { ...json["navigator"], ...options["navigator"] }
+      }
+      else {
+        json[e] = options[e]
+      }
+    });
     if (user_agent === 'random') {
       json.navigator.userAgent = orig_user_agent;
     }
@@ -1317,4 +1324,4 @@ class GoLogin {
   }
 }
 
-module.exports = {GoLogin , debug};
+module.exports = { GoLogin, debug };
