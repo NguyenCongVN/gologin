@@ -1037,6 +1037,11 @@ class GoLogin {
       if (e === "navigator") {
         json["navigator"] = { ...json["navigator"], ...options["navigator"] }
       }
+      else
+      if(e === 'storage')
+      {
+        json['storage'] = {...json['storage'], ...options['storage']}
+      }
       else {
         json[e] = options[e]
       }
