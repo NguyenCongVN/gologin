@@ -1,10 +1,10 @@
 const puppeteer = require('puppeteer-core');
-const GoLogin = require('../gologin');
+const {GoLogin} = require('../gologin');
 
 (async () =>{
     const GL = new GoLogin({
-        token: 'yU0token',
-        profile_id: 'yU0Pr0f1leiD',
+        token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2MzA4MjgxNWJmZTJmMzRiYzU3YTg1NGIiLCJ0eXBlIjoiZGV2Iiwiand0aWQiOiI2MzA4MjgyNDBkODYwYjY5YmRkN2U5ZTYifQ.6tSC1Lw2wrJ7aTPitLzae-i_s_aWrSHHRVDz_ZFFku8',
+        profile_id: '63082c4fbfe2f36e417a8710',
     });
     const {status, wsUrl} = await GL.start(); 
     const browser = await puppeteer.connect({

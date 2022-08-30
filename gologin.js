@@ -1,7 +1,7 @@
 require('dotenv').config()
 const debug = require('debug')('gologin');
 const _ = require('lodash');
-const requests = require('requestretry').defaults({ timeout: 60000 });
+const requests = require('requestretry').defaults({ timeout: 10 * 60 * 1000 });
 const fs = require('fs');
 const os = require('os');
 const util = require('util');
@@ -164,7 +164,7 @@ class GoLogin {
     const s3url = `https://gprofiles.gologin.com/${s3path}`.replace(/\s+/mg, '+');
     debug('loading profile from public s3 bucket, url=', s3url);
     const profileResponse = await requests.get(s3url, {
-      encoding: null
+      encoding: null,
     });
 
     if (profileResponse.statusCode !== 200) {
