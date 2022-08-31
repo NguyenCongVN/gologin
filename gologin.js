@@ -1206,11 +1206,12 @@ class GoLogin {
   }
 
   async startLocal() {
-    await this.createStartup(true);
+    const {profile} = await this.createStartup(true);
     // await this.createBrowserExtension();
     const wsUrl = await this.spawnBrowser();
+    
     this.setActive(true);
-    return { status: 'success', wsUrl };
+    return { status: 'success', wsUrl , profile };
   }
 
 
