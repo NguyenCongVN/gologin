@@ -1216,7 +1216,7 @@ class GoLogin {
       if (options.maxTryTime) {
         for (let i = 0; i < options.maxTryTime; i++) {
           fingerprint = await this.getRandomFingerprint(options);
-          const [width, height] = fingerprint.screenResolution.split("x");
+          const [width, height] = fingerprint.navigator.resolution.split("x");
           if (width <= maxWidth && height <= maxHeight) {
             break;
           }
@@ -1225,7 +1225,7 @@ class GoLogin {
       } else {
         while (true) {
           fingerprint = await this.getRandomFingerprint(options);
-          const [width, height] = fingerprint.screenResolution.split("x");
+          const [width, height] = fingerprint.navigator.resolution.split("x");
           if (width <= maxWidth && height <= maxHeight) {
             break;
           }
