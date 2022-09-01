@@ -19,6 +19,7 @@ const decompress = require("decompress");
 const decompressUnzip = require("decompress-unzip");
 const ProgressBar = require("progress");
 const readline = require("readline");
+const debug = require("debug")("gologin");
 
 const PLATFORM = process.platform;
 
