@@ -372,7 +372,6 @@ class GoLogin {
       filter: (file) => !file.path.endsWith("/"),
     });
   }
-  
 
   async createStartup(local = false) {
     const profilePath = path.join(
@@ -399,7 +398,7 @@ class GoLogin {
       debug("profileMetric exists");
       profile = await readFile(profileMetric);
       debug("profileMetric LENGTH ::", profile.length);
-      profile = JSON.parse(profile)['profile'];
+      profile = JSON.parse(profile)["profile"];
     } else {
       // Get profile here
       profile = await this.getProfile();
@@ -1474,6 +1473,7 @@ class GoLogin {
   }
 
   async startLocal() {
+    await this.checkBrowser();
     const { profile } = await this.createStartup(true);
     // await this.createBrowserExtension();
     const wsUrl = await this.spawnBrowser();
