@@ -372,6 +372,7 @@ class GoLogin {
       filter: (file) => !file.path.endsWith("/"),
     });
   }
+  
 
   async createStartup(local = false) {
     const profilePath = path.join(
@@ -398,7 +399,7 @@ class GoLogin {
       debug("profileMetric exists");
       profile = await readFile(profileMetric);
       debug("profileMetric LENGTH ::", profile.length);
-      profile = JSON.parse(profile);
+      profile = JSON.parse(profile)['profile'];
     } else {
       // Get profile here
       profile = await this.getProfile();
@@ -1101,7 +1102,7 @@ class GoLogin {
   }
 
   async getNewZipProfile() {
-    const zipPath = path.join(this.tmpdir, this.profile_zip_path);
+    const zipPath = this.profile_zip_path;
     const zipExists = await access(zipPath)
       .then(() => true)
       .catch(() => false);
