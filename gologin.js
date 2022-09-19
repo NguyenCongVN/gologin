@@ -1233,6 +1233,10 @@ class GoLogin {
         }
       }
     }
+    else
+    {
+      fingerprint = await this.getRandomFingerprint(options);
+    }
 
     debug("fingerprint=", fingerprint);
 
