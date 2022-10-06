@@ -386,6 +386,8 @@ class GoLogin {
     );
     let profile;
     let profile_folder;
+    // NOTICE: santize profile folder before remove because sometimes browser is terminated unexpectedly
+    await this.sanitizeProfile();
     await rimraf(profilePath);
     debug("-", profilePath, "dropped");
 
