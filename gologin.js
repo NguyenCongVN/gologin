@@ -16,6 +16,7 @@ const path = require("path");
 const zipdir = require("zip-dir");
 const https = require("https");
 const kill = require("kill-port");
+const { renameSync } = require("fs");
 
 const BrowserChecker = require("./browser-checker");
 const { BrowserUserDataManager } = require("./browser-user-data-manager");
@@ -1024,38 +1025,45 @@ class GoLogin {
   }
 
   async stopAndCommit(options, local = false) {
-    if (this.is_stopping) {
-      return true;
+    try
+    {
+      if (this.is_stopping) {
+        return true;
+      }
+      const is_posting =
+        options.posting ||
+        options.postings || // backward compability
+        false;
+  
+      if (this.uploadCookiesToServer) {
+        await this.uploadProfileCookiesToServer();
+      }
+  
+      this.is_stopping = true;
+      await this.sanitizeProfile();
+  
+      // NOTICE: if using local profile, need to create new zip file
+      if (is_posting) {
+        await this.commitProfile();
+      } else {
+        await this.getNewZipProfile();
+      }
+  
+      this.is_stopping = false;
+      this.is_active = false;
+      await delay(3000);
+      await this.clearProfileFiles();
+  
+      if (!local) {
+        await rimraf(path.join(this.tmpdir, `gologin_${this.profile_id}.zip`));
+      }
+      debug(`PROFILE ${this.profile_id} STOPPED AND CLEAR`);
+      return false;
     }
-    const is_posting =
-      options.posting ||
-      options.postings || // backward compability
-      false;
-
-    if (this.uploadCookiesToServer) {
-      await this.uploadProfileCookiesToServer();
+    catch (e)
+    {
+      debug(`ERROR WHILE STOPPING PROFILE ${e}`);
     }
-
-    this.is_stopping = true;
-    await this.sanitizeProfile();
-
-    // NOTICE: if using local profile, need to create new zip file
-    if (is_posting) {
-      await this.commitProfile();
-    } else {
-      await this.getNewZipProfile();
-    }
-
-    this.is_stopping = false;
-    this.is_active = false;
-    await delay(3000);
-    await this.clearProfileFiles();
-
-    if (!local) {
-      await rimraf(path.join(this.tmpdir, `gologin_${this.profile_id}.zip`));
-    }
-    debug(`PROFILE ${this.profile_id} STOPPED AND CLEAR`);
-    return false;
   }
 
   async stopBrowser() {
@@ -1064,7 +1072,7 @@ class GoLogin {
     }
     kill(this.port, "tcp")
       .then(debug("browser killed"))
-      .catch(debug("browser killed failed"));
+      .catch((e) =>  debug(`browser killed failed ${e}`));
   }
 
   async sanitizeProfile() {
@@ -1102,22 +1110,20 @@ class GoLogin {
 
   async getNewZipProfile() {
     const zipPath = this.profile_zip_path;
-    const zipExists = await access(zipPath)
-      .then(() => true)
-      .catch(() => false);
-    if (zipExists) {
-      await unlink(zipPath);
-    }
+    const zipToCreate = `${this.profile_zip_path}_new`;
 
     await this.sanitizeProfile();
     debug("profile sanitized");
 
     const profilePath = this.profilePath();
-    const fileBuff = await new Promise((resolve, reject) =>
+    let fileBuff = undefined
+    try
+    {
+      fileBuff = await new Promise((resolve, reject) =>
       zipdir(
         profilePath,
         {
-          saveTo: zipPath,
+          saveTo: zipToCreate,
           filter: (path) => !/RunningChromeVersion/.test(path),
         },
         (err, buffer) => {
@@ -1129,9 +1135,32 @@ class GoLogin {
         }
       )
     );
+    }
+    catch (e) {
+      debug(`ERROR WHILE CREATING ZIP ${e}`);
+    }
 
+    if(fileBuff)
+    {
+      // delete zipPath if exists
+      await access(zipPath)
+        .then(() => unlink(zipPath))
+        .catch((e) => {
+          debug(`ERROR WHILE DELETING ZIP ${e}`)
+      });
+      renameSync(zipToCreate, zipPath);
+      debug("profile zip created");
+    }
+    else
+    {
+      debug("profile zip not created");
+      // delete zipToCreate if exists
+      await access(zipToCreate)
+      .then(() => unlink(zipToCreate))
+      .catch(() => {});
+      throw new Error("profile zip not created");
+    }
     debug("PROFILE ZIP CREATED", profilePath, zipPath);
-    return fileBuff;
   }
 
   async getProfileDataToUpdate() {
