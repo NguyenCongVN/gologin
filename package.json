@@ -40,6 +40,7 @@
   "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "pub": "npm version patch && npm publish --access public"
+    "pub": "git add . && git commit -m \"Update\" && npm version patch && npm publish --access public",
+    "pub:nocommit" : "npm version patch && npm publish --access public"
   }
 }
