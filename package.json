@@ -1,6 +1,6 @@
 {
   "name": "@nconggologinnode/gologin-bettersqlite3",
-  "version": "1.0.76",
+  "version": "1.0.77",
   "description": "A high-level API to control Orbita browser over GoLogin API (Fixed native dependencies sqlite3)",
   "main": "./gologin.js",
   "repository": {
