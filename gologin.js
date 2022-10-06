@@ -386,15 +386,6 @@ class GoLogin {
     );
     let profile;
     let profile_folder;
-    // NOTICE: santize profile folder before remove because sometimes browser is terminated unexpectedly
-    try
-    {
-      await this.getNewZipProfile();
-    }
-    catch (e)
-    {
-      console.log("getNewZipProfile error", e);
-    }
     await rimraf(profilePath);
     debug("-", profilePath, "dropped");
 
