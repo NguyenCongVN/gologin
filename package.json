@@ -1,6 +1,6 @@
 {
   "name": "@nconggologinnode/gologin-bettersqlite3",
-  "version": "1.0.75",
+  "version": "1.0.76",
   "description": "A high-level API to control Orbita browser over GoLogin API (Fixed native dependencies sqlite3)",
   "main": "./gologin.js",
   "repository": {
@@ -41,6 +41,6 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "pub": "git add . && git commit -m \"Update\" && npm version patch && npm publish --access public",
-    "pub:nocommit" : "npm version patch && npm publish --access public"
+    "pub:nocommit": "npm version patch && npm publish --access public"
   }
 }
