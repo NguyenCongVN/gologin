@@ -12,6 +12,9 @@ const EXTENSIONS_PATH = path.join(HOMEDIR, '.gologin', 'extensions');
 const CHROME_EXTENSIONS_PATH = path.join(EXTENSIONS_PATH, CHROME_EXT_DIR_NAME);
 const EXTENSION_URL = 'https://clients2.google.com/service/update2/crx?response=redirect&acceptformat=crx2,crx3&x=id%3D{ext_id}%26uc&prodversion=97.0.4692.71';
 
+/**
+ * Class for managing Chrome extensions for the GoLogin service.
+ */
 class ExtensionsManager {
   #USER_AGENT = '';
   #API_BASE_URL = '';
@@ -22,6 +25,10 @@ class ExtensionsManager {
   #deleteProfileExtFolders = false;
   #deleteWidevineCdmFolder = false;
 
+    /**
+   * Initializes the ExtensionsManager instance.
+   * @returns {Promise<void>}
+   */
   constructor() {
     if (!ExtensionsManager.instance) {
       ExtensionsManager.instance = this;
@@ -30,11 +37,32 @@ class ExtensionsManager {
     return ExtensionsManager.instance;
   }
 
+ 
+  /**
+   * Checks if the ExtensionsManager instance has been initialized.
+   * @returns {boolean} true if initialized, false otherwise.
+   */
   get isInited() { return this.#inited }
+  /**
+  * Checks if the ExtensionsManager instance is set to use local extension storage.
+  * @returns {boolean} true if using local storage, false otherwise.
+  */
   get useLocalExtStorage() { return this.#useLocalExtStorage }
+   /**
+   * Checks if the ExtensionsManager instance is set to delete profile extension folders.
+   * @returns {boolean} true if deleting profile extension folders, false otherwise.
+   */
   get deleteProfileExtFolders() { return this.#deleteProfileExtFolders }
+  /**
+   * Checks if the ExtensionsManager instance is set to delete the Widevine CDM folder.
+   * @returns {boolean} true if deleting the Widevine CDM folder, false otherwise.
+   */
   get deleteWidevineCdmFolder() { return this.#deleteWidevineCdmFolder }
 
+  /**
+   * Sets the user agent for the ExtensionsManager instance.
+   * @param {string} userAgent - The user agent string to set.
+   */
   set userAgent(userAgent) {
     if (!userAgent) {
       return;
@@ -43,6 +71,10 @@ class ExtensionsManager {
     this.#USER_AGENT = userAgent;
   }
 
+  /**
+   * Sets the access token for the ExtensionsManager instance.
+   * @param {string} accessToken - The access token to set.
+   */
   set accessToken(accessToken) {
     if (!accessToken) {
       return;
@@ -59,6 +91,14 @@ class ExtensionsManager {
     this.#API_BASE_URL = apiUrl;
   }
 
+  /**
+
+Initializes the ExtensionsManager instance by creating the chrome extensions directory if it does not exist,
+reads the existing chrome extensions from the directory and sets the #inited flag to true.
+@async
+@function
+@returns {Promise<void>} - A promise that resolves after the instance has been initialized.
+*/
   init() {
     if (this.#inited) {
       return Promise.resolve();
@@ -77,6 +117,13 @@ class ExtensionsManager {
     return this.#existedChromeExtensions;
   }
 
+  /**
+
+Downloads and extracts the Chrome extensions required by the given profileExtensions list
+@async
+@param {Array} profileExtensions - A list of Chrome extension IDs and versions in the format of "<ID>@<VERSION>".
+@returns {Array} - A list of extracted Chrome extensions directories
+*/
   async checkChromeExtensions(profileExtensions = []) {
     if (!(Array.isArray(profileExtensions) && profileExtensions.length)) {
       return [];

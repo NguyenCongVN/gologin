@@ -83,6 +83,17 @@ class GoLogin {
     return this.browserChecker.checkBrowser(this.autoUpdateBrowser);
   }
 
+  /**
+
+  Sets the profile ID for the GoLogin instance.
+  This method is used to change the profile ID associated with the instance.
+  It updates the internal state of the instance to use the new profile ID for all subsequent requests.
+  @param {string} profileId - The new profile ID to set.
+  @memberof GoLogin
+  @returns {*} Nothing is returned from this method.
+  @throws {TypeError} If the profileId parameter is not a string.
+  @throws {Error} If the instance is already active.
+  */
   async setProfileId(profile_id) {
     this.profile_id = profile_id;
     this.cookiesFilePath = path.join(
@@ -98,6 +109,12 @@ class GoLogin {
     );
   }
 
+  /**
+
+  Retrieves a token for authorization from the GoLogin API server.
+  @return {Promise<string>} A Promise that resolves with the authorization token or rejects with an error.
+  @memberof GoLogin
+*/
   async getToken(username, password) {
     let data = await requests.post(`${API_URL}/user/login`, {
       json: {
@@ -115,6 +132,16 @@ class GoLogin {
     }
   }
 
+  /**
+
+  Retrieves a new fingerprint from GoLogin API using the provided access token.
+  This method requires that the GoLogin instance has a valid access token set.
+  The fingerprint is used to mask browser details to make it more difficult to detect that automation is being used.
+  @param {string} [profileId=null] - The ID of the profile to create the fingerprint for. If null, the fingerprint will be created for the default profile.
+  @returns {Promise<string>} - A Promise that resolves with the new fingerprint or rejects with an error.
+  @throws {Error} - Throws an error if the GoLogin instance does not have a valid access token set.
+  @memberof GoLogin
+*/
   async getNewFingerPrint(os) {
     debug("GETTING FINGERPRINT");
 
@@ -132,6 +159,12 @@ class GoLogin {
     return fpResponse?.body || {};
   }
 
+  /**
+
+  Returns an array of all profiles associated with the GoLogin account.
+  @returns {Array} An array of profile objects.
+  @memberof GoLogin
+  */
   async profiles() {
     const profilesResponse = await requests.get(`${API_URL}/browser/v2`, {
       headers: {
@@ -147,6 +180,16 @@ class GoLogin {
     return JSON.parse(profilesResponse.body);
   }
 
+  /**
+
+  Fetches a GoLogin profile by profile ID.
+  @async
+  @method
+  @param {string} [profileId] - The ID of the GoLogin profile to fetch.
+  @return {Promise<Object>} - An object containing the profile information.
+  @throws {Error} - If the access token is invalid or the request fails.
+  @memberof GoLogin
+  */
   async getProfile(profile_id) {
     const id = profile_id || this.profile_id;
     debug("getProfile", this.access_token, id);
@@ -184,6 +227,17 @@ class GoLogin {
     );
   }
 
+  /**
+
+  Retrieves the profile information from the AWS S3 bucket
+  associated with the current profile ID and access token.
+  @returns {Promise<object>} A Promise that resolves with the profile data.
+  The profile data includes browser user agent, browser platform, browser language,
+  browser resolution, browser timezone and timezone offset.
+  If the Promise is rejected, an error is thrown.
+  @throws {Error} If there is an error accessing the AWS S3 bucket.
+  @memberof GoLogin
+  */
   async getProfileS3(s3path) {
     if (!s3path) {
       throw new Error("s3path not found");
@@ -218,6 +272,15 @@ class GoLogin {
     return Buffer.from(profileResponse.body);
   }
 
+  /**
+
+Posts a file to the S3 bucket associated with the current profile.
+@param {string} fileName - The name of the file to be uploaded.
+@param {Buffer} fileBuff - A buffer containing the file data to be uploaded.
+@throws {Error} If the uploaded file size does not match the size of the input buffer.
+@memberof GoLogin
+@returns {Promise<void>} Promise that resolves when the file has been successfully uploaded to the S3 bucket.
+*/
   async postFile(fileName, fileBuff) {
     debug("POSTING FILE", fileBuff.length);
     debug("Getting signed URL for S3");
@@ -277,6 +340,12 @@ class GoLogin {
     console.log("Profile has been uploaded to S3 successfully");
   }
 
+  /**
+   * Returns a buffer containing an empty profile folder in the form of a zip file.
+   *
+   * @return {Promise<Buffer>} A Promise that resolves with a buffer containing an empty profile folder.
+   * @memberof GoLogin
+   */
   async emptyProfileFolder() {
     debug("get emptyProfileFolder");
     const profile = await readFile(path.resolve(__dirname, "zero_profile.zip"));
@@ -284,6 +353,13 @@ class GoLogin {
     return profile;
   }
 
+  /**
+
+Converts the preferences object by mapping its properties to their expected format.
+@param {Object} preferences - The preferences object to convert.
+@returns {Object} - The converted preferences object.
+@memberof GoLogin
+*/
   convertPreferences(preferences) {
     if (_.get(preferences, "navigator.userAgent")) {
       preferences.userAgent = _.get(preferences, "navigator.userAgent");
@@ -340,6 +416,12 @@ class GoLogin {
     return preferences;
   }
 
+  /**
+
+Creates a browser extension for the Orbita browser.
+@returns {Promise<string>} Returns a promise that resolves to the path of the created extension.
+@memberof GoLogin
+*/
   async createBrowserExtension() {
     const that = this;
     debug("start createBrowserExtension");
@@ -366,6 +448,15 @@ class GoLogin {
     debug("createBrowserExtension done");
   }
 
+  /**
+   * Extracts the contents of a ZIP file to the specified path.
+   *
+   * @param {string} path - The path to extract the contents of the ZIP file to.
+   * @param {string} zipfile - The path of the ZIP file to extract.
+   * @returns {Promise} A Promise that resolves when the extraction is complete.
+   * @memberof GoLogin
+   */
+
   extractProfile(path, zipfile) {
     debug(`extactProfile ${zipfile}, ${path}`);
     return decompress(zipfile, path, {
@@ -373,6 +464,20 @@ class GoLogin {
       filter: (file) => !file.path.endsWith("/"),
     });
   }
+
+  /**
+   * Creates a new browser profile for the instance and sets it up according to the profile
+   * information retrieved from the server. The profile includes information such as screen
+   * resolution, browser language, user agent, timezone, and proxy settings. If a local profile
+   * is available and `local` is set to `true`, the method will use the local profile instead of
+   * retrieving it from the server. The method returns an object containing the path to the
+   * newly created profile and the profile object itself.
+   *
+   * @async
+   * @param {boolean} [local=false] - A flag indicating whether to use a local profile if available.
+   * @returns {Promise<{ profilePath: string, profile: Object }>} An object containing the path to the newly created profile and the profile object itself.
+   * @throws {Error} If no fonts list is provided for font masking.
+   */
 
   async createStartup(local = false) {
     const profilePath = path.join(
@@ -842,6 +947,12 @@ class GoLogin {
     return this._tz.timezone;
   }
 
+  /**
+
+Generate arguments to spawn a new browser process with the specified profile and proxy configuration.
+@returns {Promise<Array<string>>} An array of command line arguments to pass to puppeteer.launch().
+@throws {Error} Throws an error if there is an issue getting the time zone or the proxy is invalid.
+*/
   async spawnArguments() {
     const profile_path = this.profilePath();
 
@@ -876,6 +987,15 @@ class GoLogin {
     return params;
   }
 
+  /**
+
+Spawns a new browser instance with the given configuration and returns the WebSocket Debugger URL.
+@async
+@function spawnBrowser
+@memberof PuppeteerManager
+@returns {Promise<string>} The WebSocket Debugger URL.
+@throws {Error} If there is an error getting the time zone.
+*/
   async spawnBrowser() {
     let remote_debugging_port = this.remote_debugging_port;
     if (!remote_debugging_port) {
@@ -1011,6 +1131,13 @@ class GoLogin {
     return this.spawnBrowser();
   }
 
+  /**
+
+Deletes the temporary files associated with the current profile.
+@async
+@function
+@returns {Promise<void>} A Promise that resolves when the files have been successfully deleted or rejects with an error if there was an issue deleting the files.
+*/
   async clearProfileFiles() {
     try {
       await rimraf(
@@ -1023,10 +1150,19 @@ class GoLogin {
       debug("ERROR WHILE CLEARING PROFILE FILES", e);
     }
   }
+  
+/**
 
+Stops the running browser and commits the profile.
+@async
+@param {Object} options - Options for the operation.
+@param {boolean} [options.posting=false] - Whether to commit the profile to the server or not.
+@param {boolean} [options.postings=false] - Backward compatibility for previous version.
+@param {boolean} [local=false] - Whether the profile is local or not. Default is false.
+@returns {boolean} - Returns false if the operation is successful.
+*/
   async stopAndCommit(options, local = false) {
-    try
-    {
+    try {
       if (this.is_stopping) {
         return true;
       }
@@ -1034,34 +1170,32 @@ class GoLogin {
         options.posting ||
         options.postings || // backward compability
         false;
-  
+
       if (this.uploadCookiesToServer) {
         await this.uploadProfileCookiesToServer();
       }
-  
+
       this.is_stopping = true;
       await this.sanitizeProfile();
-  
+
       // NOTICE: if using local profile, need to create new zip file
       if (is_posting) {
         await this.commitProfile();
       } else {
         await this.getNewZipProfile();
       }
-  
+
       this.is_stopping = false;
       this.is_active = false;
       await delay(3000);
       await this.clearProfileFiles();
-  
+
       if (!local) {
         await rimraf(path.join(this.tmpdir, `gologin_${this.profile_id}.zip`));
       }
       debug(`PROFILE ${this.profile_id} STOPPED AND CLEAR`);
       return false;
-    }
-    catch (e)
-    {
+    } catch (e) {
       debug(`ERROR WHILE STOPPING PROFILE ${e}`);
     }
   }
@@ -1072,7 +1206,7 @@ class GoLogin {
     }
     kill(this.port, "tcp")
       .then(debug("browser killed"))
-      .catch((e) =>  debug(`browser killed failed ${e}`));
+      .catch((e) => debug(`browser killed failed ${e}`));
   }
 
   async sanitizeProfile() {
@@ -1116,48 +1250,43 @@ class GoLogin {
     debug("profile sanitized");
 
     const profilePath = this.profilePath();
-    let fileBuff = undefined
-    try
-    {
+    let fileBuff = undefined;
+    try {
       fileBuff = await new Promise((resolve, reject) =>
-      zipdir(
-        profilePath,
-        {
-          saveTo: zipToCreate,
-          filter: (path) => !/RunningChromeVersion/.test(path),
-        },
-        (err, buffer) => {
-          if (err) {
-            reject(err);
-            return;
+        zipdir(
+          profilePath,
+          {
+            saveTo: zipToCreate,
+            filter: (path) => !/RunningChromeVersion/.test(path),
+          },
+          (err, buffer) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            resolve(buffer);
           }
-          resolve(buffer);
-        }
-      )
-    );
-    }
-    catch (e) {
+        )
+      );
+    } catch (e) {
       debug(`ERROR WHILE CREATING ZIP ${e}`);
     }
 
-    if(fileBuff)
-    {
+    if (fileBuff) {
       // delete zipPath if exists
       await access(zipPath)
         .then(() => unlink(zipPath))
         .catch((e) => {
-          debug(`ERROR WHILE DELETING ZIP ${e}`)
-      });
+          debug(`ERROR WHILE DELETING ZIP ${e}`);
+        });
       renameSync(zipToCreate, zipPath);
       debug("profile zip created");
-    }
-    else
-    {
+    } else {
       debug("profile zip not created");
       // delete zipToCreate if exists
       await access(zipToCreate)
-      .then(() => unlink(zipToCreate))
-      .catch(() => {});
+        .then(() => unlink(zipToCreate))
+        .catch(() => {});
       throw new Error("profile zip not created");
     }
     debug("PROFILE ZIP CREATED", profilePath, zipPath);
@@ -1236,6 +1365,30 @@ class GoLogin {
     return JSON.parse(fingerprint.body);
   }
 
+  /**
+
+Create a new browser profile with the provided options.
+@async
+@param {Object} options - An object containing options for the browser profile.
+@param {string} [options.maxResolution] - The maximum resolution for the browser profile in the format "widthxheight".
+@param {number} [options.maxTryTime] - The maximum amount of time to try to generate a random fingerprint in seconds.
+@param {Object} [options.navigator] - The navigator object to use for the browser profile.
+@param {Object} [options.storage] - The storage object to use for the browser profile.
+@param {boolean} [options.sound] - Whether to include sound in the browser profile.
+@param {boolean} [options.notifications] - Whether to include notifications in the browser profile.
+@param {boolean} [options.bluetooth] - Whether to include bluetooth in the browser profile.
+@param {boolean} [options.languages] - Whether to include additional languages in the browser profile.
+@param {string} [options.language] - The default language for the browser profile.
+@param {string} [options.timezone] - The timezone to use for the browser profile.
+@param {Object} [options.proxy] - The proxy to use for the browser profile.
+@param {string} [options.proxy.mode] - The proxy mode to use, either "http" or "socks5".
+@param {string} [options.proxy.host] - The proxy host to use.
+@param {number} [options.proxy.port] - The proxy port to use.
+@param {Object} [options.webRTC] - The WebRTC configuration to use for the browser profile.
+@param {boolean} [options.webRTC.mode] - The WebRTC mode to use, either "mask", "alerted" or "off".
+@returns {string} The ID of the newly created browser profile.
+@throws {Error} Will throw an error if no valid random fingerprint is generated or if the access token is invalid.
+*/
   async create(options) {
     debug("createProfile", options);
 
@@ -1261,9 +1414,7 @@ class GoLogin {
           await delay(1000);
         }
       }
-    }
-    else
-    {
+    } else {
       fingerprint = await this.getRandomFingerprint(options);
     }
 
@@ -1342,6 +1493,15 @@ class GoLogin {
     return response.body.id;
   }
 
+  /**
+
+Deletes a browser profile from GoLogin API
+@async
+@function delete
+@param {string} [pid=this.profile_id] - The profile ID to be deleted
+@throws {Error} Throws an error if the API request fails or returns an error status code
+@returns {void}
+*/
   async delete(pid) {
     const profile_id = pid || this.profile_id;
     await requests.delete(`${API_URL}/browser/${profile_id}`, {
@@ -1352,6 +1512,23 @@ class GoLogin {
     });
   }
 
+  /**
+
+Updates the profile with the given options.
+@async
+@function
+@param {object} options - The options to update the profile with.
+@param {string} options.id - The ID of the profile to update.
+@param {object} options.navigator - The updated navigator settings for the profile.
+@param {string} options.maxResolution - The updated maximum screen resolution for the profile.
+@param {number} options.maxTryTime - The updated maximum time to try to generate a fingerprint within the maximum resolution.
+@param {object} options.proxy - The updated proxy settings for the profile.
+@param {string} options.language - The updated language settings for the profile.
+@param {boolean} options.fontsMasking - Whether or not to enable font masking for the profile.
+@param {boolean} options.differentOs - Whether or not to simulate a different operating system for the profile.
+@param {array} options.extra_params - Any extra parameters to pass to the browser instance.
+@returns {Promise<object>} A Promise that resolves to the updated profile.
+*/
   async update(options) {
     this.profile_id = options.id;
     const profile = await this.getProfile();
@@ -1448,6 +1625,15 @@ class GoLogin {
     return response.body;
   }
 
+  /**
+
+Writes cookies to a file and sends a request to the server to store them.
+@async
+@function writeCookiesToFile
+@memberof CookiesManager
+@throws {Error} If there are no cookies.
+@returns {void}
+*/
   async writeCookiesToFile() {
     const cookies = await this.getCookies(this.profile_id);
     if (!cookies.length) {
@@ -1477,6 +1663,13 @@ class GoLogin {
     return this.postCookies(this.profile_id, cookies);
   }
 
+  /**
+
+Starts the browser session either locally or remotely.
+@returns {Promise<{status: string, wsUrl: string, profile: {id: string, timezone: string, navigator: Object, fonts: Object, webGLMetadata: Object, webRTC: Object, storage: Object, name: string, notes: string, lastStarted: string, language: string, proxy: Object, fingerprint: Object}}>} Returns a promise that resolves with an object containing status, websocket URL, and profile information on success.
+@throws {Error} Throws an error if the Orbita browser executable is not found on the specified path.
+@async
+*/
   async start() {
     if (this.is_remote) {
       return this.startRemote();
@@ -1505,6 +1698,15 @@ class GoLogin {
     return { status: "success", wsUrl, profile };
   }
 
+  /**
+
+Starts a local instance of the Orbita browser.
+@async
+@function startLocal
+@memberof Orbita
+@throws {Error} If the Orbita browser executable is not found.
+@returns {Promise<Object>} A promise that resolves to an object containing the status, WebSocket URL, and profile of the started instance.
+*/
   async startLocal() {
     await this.checkBrowser();
     const { profile } = await this.createStartup(true);
@@ -1515,6 +1717,14 @@ class GoLogin {
     return { status: "success", wsUrl, profile };
   }
 
+  /**
+
+Stops the browser instance and commits any changes made to the profile.
+If the instance is remote, calls the stopRemote function instead.
+@async
+@function stop
+@returns {Promise<void>}
+*/
   async stop() {
     await new Promise((resolve) => setTimeout(resolve, 500));
     if (this.is_remote) {
@@ -1524,10 +1734,27 @@ class GoLogin {
     await this.stopAndCommit({ posting: true }, false);
   }
 
+  /**
+
+Stops the local browser and commits changes to the profile.
+@async
+@param {Object} [options] - The options object.
+@param {boolean} [options.posting=false] - Flag indicating if the stop is due to a posting.
+@returns {Promise<void>} - A promise that resolves when the browser is stopped and changes are committed.
+*/
   async stopLocal(options) {
     const opts = options || { posting: false };
     await this.stopAndCommit(opts, true);
   }
+
+  /**
+
+Wait for the debugging URL of the browser to become available.
+@param {number} delay_ms - The delay time in milliseconds before checking the URL.
+@param {number} try_count - The number of attempts to check the URL.
+@returns {string|Object} - The WebSocket URL of the browser or an object with error information.
+@throws {Error} - If the proxy settings are incorrect.
+*/
 
   async waitDebuggingUrl(delay_ms, try_count = 0) {
     await delay(delay_ms);
@@ -1562,6 +1789,15 @@ class GoLogin {
     return wsUrl;
   }
 
+  /**
+
+Starts a remote browser instance and returns a WebSocket URL.
+If the profile is not remote, it throws an error.
+@param {number} delay_ms - Delay in milliseconds before getting WebSocket URL.
+@returns {Promise<{ status: string, wsUrl: string }>} An object containing the status and WebSocket URL.
+@throws {Error} If profileResponse.statusCode is 401.
+@throws {Error} If the profile is not remote.
+*/
   async startRemote(delay_ms = 10000) {
     debug(`startRemote ${this.profile_id}`);
 
@@ -1616,6 +1852,13 @@ class GoLogin {
     return { status: "failure", message: profileResponse.body };
   }
 
+  /**
+
+Stop the remote browser session for the current profile.
+@async
+@returns {Promise<Object>} The response object from the API.
+@throws {Error} If the request to stop the remote session fails.
+*/
   async stopRemote() {
     debug(`stopRemote ${this.profile_id}`);
     const profileResponse = await requests.delete(
