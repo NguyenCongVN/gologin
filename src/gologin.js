@@ -1,37 +1,36 @@
-require('dotenv').config()
-const debug = require('debug')('gologin');
-const _ = require('lodash');
-const requests = require('requestretry').defaults({ timeout: 10 * 60 * 1000 });
-const fs = require('fs');
-const os = require('os');
-const util = require('util');
-const rimraf = util.promisify(require('rimraf'));
-const { access, unlink, writeFile, readFile } = require('fs').promises;
-const exec = util.promisify(require('child_process').exec);
-const { spawn, execFile } = require('child_process');
-const ProxyAgent = require('simple-proxy-agent');
-const decompress = require('decompress');
-const decompressUnzip = require('decompress-unzip');
-const path = require('path');
-const zipdir = require('zip-dir');
-const https = require('https');
+import { execFile, spawn } from 'child_process';
+import debug from 'debug';
+import decompress from 'decompress';
+import decompressUnzip from 'decompress-unzip';
+import { existsSync, mkdirSync, promises as _promises } from 'fs';
+import { get as _get } from 'https';
+import { tmpdir } from 'os';
+import { join, resolve as _resolve,sep } from 'path';
+import requests from 'requestretry';
+import rimraf from 'rimraf';
+import ProxyAgent from 'simple-proxy-agent';
 
-const BrowserChecker = require('./browser-checker');
-const { BrowserUserDataManager } = require('./browser-user-data-manager');
-const CookiesManager = require('./cookies-manager');
-const fontsCollection = require('./fonts');
-const ExtensionsManager = require('./extensions-manager');
-const { default: axios } = require('axios');
+import { fontsCollection } from '../fonts.js';
+import { updateProfileProxy, updateProfileResolution, updateProfileUserAgent } from './browser/browser-api.js';
+import BrowserChecker from './browser/browser-checker.js';
+import { composeFonts, downloadCookies, setExtPathsAndRemoveDeleted, 
+  setOriginalExtPaths, uploadCookies } from './browser/browser-user-data-manager.js';
+import { getChunckedInsertValues, getDB, loadCookiesFromFile } from './cookies/cookies-manager.js';
+import ExtensionsManager from './extensions/extensions-manager.js';
+import { archiveProfile } from './profile/profile-archiver.js';
+import { get, isPortReachable } from './utils/utils.js';
+import { API_URL } from './utils/common.js';
 
-const SEPARATOR = path.sep;
-const API_URL = 'https://api.gologin.com';
+const { access, unlink, writeFile, readFile } = _promises;
+
+const SEPARATOR = sep;
 const OS_PLATFORM = process.platform;
 
 // process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 
 const delay = (time) => new Promise((resolve) => setTimeout(resolve, time));
 
-class GoLogin {
+export class GoLogin {
   constructor(options = {}) {
     this.is_remote = options.remote || false;
     this.access_token = options.token;
@@ -45,7 +44,12 @@ class GoLogin {
     this.is_stopping = false;
     this.differentOs = false;
     this.profileOs = 'lin';
-    this.tmpdir = os.tmpdir();
+    this.waitWebsocket = true;
+    if (options.waitWebsocket === false) {
+      this.waitWebsocket = false;
+    }
+
+    this.tmpdir = tmpdir();
     this.autoUpdateBrowser = !!options.autoUpdateBrowser;
     this.browserChecker = new BrowserChecker(options.skipOrbitaHashChecking);
     this.uploadCookiesToServer = options.uploadCookiesToServer || false;
@@ -53,34 +57,37 @@ class GoLogin {
     this.remote_debugging_port = options.remote_debugging_port || 0;
     this.timezone = options.timezone;
     this.extensionPathsToInstall = [];
+    this.restoreLastSession = options.restoreLastSession || false;
 
     if (options.tmpdir) {
       this.tmpdir = options.tmpdir;
-      if (!fs.existsSync(this.tmpdir)) {
+      if (!existsSync(this.tmpdir)) {
         debug('making tmpdir', this.tmpdir);
-        fs.mkdirSync(this.tmpdir, { recursive: true })
+        mkdirSync(this.tmpdir, { recursive: true });
       }
     }
 
-    this.cookiesFilePath = path.join(this.tmpdir, `gologin_profile_${this.profile_id}`, 'Default', 'Network', 'Cookies');
-    this.profile_zip_path = path.join(this.tmpdir, `gologin_${this.profile_id}.zip`);
+    this.cookiesFilePath = join(this.tmpdir, `gologin_profile_${this.profile_id}`, 'Default', 'Network', 'Cookies');
+    this.profile_zip_path = join(this.tmpdir, `gologin_${this.profile_id}.zip`);
     debug('INIT GOLOGIN', this.profile_id);
   }
 
-  async checkBrowser() { return this.browserChecker.checkBrowser(this.autoUpdateBrowser) }
+  async checkBrowser() {
+    return this.browserChecker.checkBrowser(this.autoUpdateBrowser);
+  }
 
   async setProfileId(profile_id) {
     this.profile_id = profile_id;
-    this.cookiesFilePath = path.join(this.tmpdir, `gologin_profile_${this.profile_id}`, 'Default', 'Network', 'Cookies');
-    this.profile_zip_path = path.join(this.tmpdir, `gologin_${this.profile_id}.zip`);
+    this.cookiesFilePath = join(this.tmpdir, `gologin_profile_${this.profile_id}`, 'Default', 'Network', 'Cookies');
+    this.profile_zip_path = join(this.tmpdir, `gologin_${this.profile_id}.zip`);
   }
 
   async getToken(username, password) {
-    let data = await requests.post(`${API_URL}/user/login`, {
+    const data = await requests.post(`${API_URL}/user/login`, {
       json: {
-        username: username,
-        password: password
-      }
+        username,
+        password,
+      },
     });
 
     if (!Reflect.has(data, 'body.access_token')) {
@@ -96,8 +103,8 @@ class GoLogin {
       headers: {
         'Authorization': `Bearer ${this.access_token}`,
         'User-Agent': 'gologin-api',
-      }
-    })
+      },
+    });
 
     return fpResponse?.body || {};
   }
@@ -108,11 +115,11 @@ class GoLogin {
         'Authorization': `Bearer ${this.access_token}`,
         'User-Agent': 'gologin-api',
 
-      }
-    })
+      },
+    });
 
     if (profilesResponse.statusCode !== 200) {
-      throw new Error(`Gologin /browser response error`);
+      throw new Error('Gologin /browser response error');
     }
 
     return JSON.parse(profilesResponse.body);
@@ -123,11 +130,11 @@ class GoLogin {
     debug('getProfile', this.access_token, id);
     const profileResponse = await requests.get(`${API_URL}/browser/${id}`, {
       headers: {
-        'Authorization': `Bearer ${this.access_token}`
-      }
-    })
-    debug("profileResponse", profileResponse.statusCode, profileResponse.body);
+        'Authorization': `Bearer ${this.access_token}`,
+      },
+    });
 
+    debug('profileResponse', profileResponse.statusCode, profileResponse.body);
 
     if (profileResponse.statusCode === 404) {
       throw new Error(JSON.parse(profileResponse.body).message);
@@ -142,15 +149,14 @@ class GoLogin {
     }
 
     if (profileResponse.statusCode === 401) {
-      throw new Error("invalid token");
+      throw new Error('invalid token');
     }
-
 
     return JSON.parse(profileResponse.body);
   }
 
   async emptyProfile() {
-    return readFile(path.resolve(__dirname, 'gologin_zeroprofile.b64')).then(res => res.toString());
+    return readFile(_resolve(__dirname, 'gologin_zeroprofile.b64')).then(res => res.toString());
   }
 
   async getProfileS3(s3path) {
@@ -169,6 +175,7 @@ class GoLogin {
 
     if (profileResponse.statusCode !== 200) {
       debug(`Gologin S3 BUCKET ${s3url} response error ${profileResponse.statusCode}  - use empty`);
+
       return '';
     }
 
@@ -229,37 +236,39 @@ class GoLogin {
 
   async emptyProfileFolder() {
     debug('get emptyProfileFolder');
-    const profile = await readFile(path.resolve(__dirname, 'zero_profile.zip'));
+    const profile = await readFile(_resolve(__dirname, 'zero_profile.zip'));
     debug('emptyProfileFolder LENGTH ::', profile.length);
+
     return profile;
   }
 
   convertPreferences(preferences) {
-    if (_.get(preferences, 'navigator.userAgent')) {
-      preferences.userAgent = _.get(preferences, 'navigator.userAgent');
+    if (get(preferences, 'navigator.userAgent')) {
+      preferences.userAgent = get(preferences, 'navigator.userAgent');
     }
 
-    if (_.get(preferences, 'navigator.doNotTrack')) {
-      preferences.doNotTrack = _.get(preferences, 'navigator.doNotTrack');
+    if (get(preferences, 'navigator.doNotTrack')) {
+      preferences.doNotTrack = get(preferences, 'navigator.doNotTrack');
     }
 
-    if (_.get(preferences, 'navigator.hardwareConcurrency')) {
-      preferences.hardwareConcurrency = _.get(preferences, 'navigator.hardwareConcurrency');
+    if (get(preferences, 'navigator.hardwareConcurrency')) {
+      preferences.hardwareConcurrency = get(preferences, 'navigator.hardwareConcurrency');
     }
 
-    if (_.get(preferences, 'navigator.language')) {
-      preferences.language = _.get(preferences, 'navigator.language');
-    }
-    if (_.get(preferences, 'navigator.maxTouchPoints')) {
-      preferences.navigator.max_touch_points = _.get(preferences, 'navigator.maxTouchPoints');
+    if (get(preferences, 'navigator.language')) {
+      preferences.language = get(preferences, 'navigator.language');
     }
 
-    if (_.get(preferences, 'isM1')) {
-      preferences.is_m1 = _.get(preferences, 'isM1');
+    if (get(preferences, 'navigator.maxTouchPoints')) {
+      preferences.navigator.max_touch_points = get(preferences, 'navigator.maxTouchPoints');
     }
 
-    if (_.get(preferences, 'os') == 'android') {
-      const devicePixelRatio = _.get(preferences, "devicePixelRatio");
+    if (get(preferences, 'isM1')) {
+      preferences.is_m1 = get(preferences, 'isM1');
+    }
+
+    if (get(preferences, 'os') == 'android') {
+      const devicePixelRatio = get(preferences, 'devicePixelRatio');
       const deviceScaleFactorCeil = Math.ceil(devicePixelRatio || 3.5);
       let deviceScaleFactor = devicePixelRatio;
       if (deviceScaleFactorCeil === devicePixelRatio) {
@@ -271,7 +280,7 @@ class GoLogin {
         width: parseInt(this.resolution.width, 10),
         height: parseInt(this.resolution.height, 10),
         device_scale_factor: deviceScaleFactor,
-      }
+      };
     }
 
     preferences.mediaDevices = {
@@ -279,28 +288,29 @@ class GoLogin {
       videoInputs: preferences.mediaDevices.videoInputs,
       audioInputs: preferences.mediaDevices.audioInputs,
       audioOutputs: preferences.mediaDevices.audioOutputs,
-    }
+    };
 
     return preferences;
   }
 
   async createBrowserExtension() {
     const that = this;
-    debug('start createBrowserExtension')
-    await rimraf(this.orbitaExtensionPath());
+    debug('start createBrowserExtension');
+    await rimraf(this.orbitaExtensionPath(), () => null);
     const extPath = this.orbitaExtensionPath();
     debug('extension folder sanitized');
-    const extension_source = path.resolve(__dirname, `gologin-browser-ext.zip`);
+    const extension_source = _resolve(__dirname, 'gologin-browser-ext.zip');
     await decompress(extension_source, extPath,
       {
         plugins: [decompressUnzip()],
         filter: file => !file.path.endsWith('/'),
-      }
+      },
     )
       .then(() => {
         debug('extraction done');
         debug('create uid.json');
-        return writeFile(path.join(extPath, 'uid.json'), JSON.stringify({ uid: that.profile_id }, null, 2))
+
+        return writeFile(join(extPath, 'uid.json'), JSON.stringify({ uid: that.profile_id }, null, 2))
           .then(() => extPath);
       })
       .catch(async (e) => {
@@ -312,24 +322,23 @@ class GoLogin {
 
   extractProfile(path, zipfile) {
     debug(`extactProfile ${zipfile}, ${path}`);
+
     return decompress(zipfile, path,
       {
         plugins: [decompressUnzip()],
         filter: file => !file.path.endsWith('/'),
-      }
+      },
     );
   }
 
-  async createStartup(local = false) {
-    const profilePath = path.join(this.tmpdir, `gologin_profile_${this.profile_id}`);
+  async createStartup(local=false) {
+    const profilePath = join(this.tmpdir, `gologin_profile_${this.profile_id}`);
     let profile;
     let profile_folder;
-    // NOTICE: santize profile folder before remove because sometimes browser is terminated unexpectedly
-    await this.sanitizeProfile();
-    await rimraf(profilePath);
+    await rimraf(profilePath, () => null);
     debug('-', profilePath, 'dropped');
     profile = await this.getProfile();
-    const { navigator = {}, fonts, os: profileOs ,   } = profile;
+    const { navigator = {}, fonts, os: profileOs  } = profile;
     this.fontsMasking = fonts?.enableMasking;
     this.profileOs = profileOs;
     this.differentOs =
@@ -343,6 +352,7 @@ class GoLogin {
       resolution = '1920x1080',
       language = 'en-US,en;q=0.9',
     } = navigator;
+
     this.language = language;
     const [screenWidth, screenHeight] = resolution.split('x');
     this.resolution = {
@@ -353,9 +363,8 @@ class GoLogin {
     const profileZipExists = await access(this.profile_zip_path).then(() => true).catch(() => false);
     if (!(local && profileZipExists)) {
       try {
-        profile_folder = await this.getProfileS3(_.get(profile, 's3Path', ''));
-      }
-      catch (e) {
+        profile_folder = await this.getProfileS3(get(profile, 's3Path', ''));
+      } catch (e) {
         debug('Cannot get profile - using empty', e);
       }
 
@@ -383,7 +392,7 @@ class GoLogin {
       await this.extractProfile(profilePath, this.profile_zip_path);
     }
 
-    const singletonLockPath = path.join(profilePath, 'SingletonLock');
+    const singletonLockPath = join(profilePath, 'SingletonLock');
     const singletonLockExists = await access(singletonLockPath).then(() => true).catch(() => false);
     if (singletonLockExists) {
       debug('removing SingletonLock');
@@ -391,7 +400,7 @@ class GoLogin {
       debug('SingletonLock removed');
     }
 
-    const pref_file_name = path.join(profilePath, 'Default', 'Preferences');
+    const pref_file_name = join(profilePath, 'Default', 'Preferences');
     debug('reading', pref_file_name);
 
     const prefFileExists = await access(pref_file_name).then(() => true).catch(() => false);
@@ -403,35 +412,56 @@ class GoLogin {
     }
 
     const preferences_raw = await readFile(pref_file_name);
-    let preferences = JSON.parse(preferences_raw.toString());
-    let proxy = _.get(profile, 'proxy');
-    let name = _.get(profile, 'name');
-    const chromeExtensions = _.get(profile, 'chromeExtensions');
+    const preferences = JSON.parse(preferences_raw.toString());
+    let proxy = get(profile, 'proxy');
+    const name = get(profile, 'name');
+    const chromeExtensions = get(profile, 'chromeExtensions') || [];
+    const userChromeExtensions = get(profile, 'userChromeExtensions') || [];
+    const allExtensions = [...chromeExtensions, ...userChromeExtensions];
 
-    if (chromeExtensions && chromeExtensions.length) {
+    if (allExtensions.length) {
       const ExtensionsManagerInst = new ExtensionsManager();
       ExtensionsManagerInst.apiUrl = API_URL;
       await ExtensionsManagerInst.init()
         .then(() => ExtensionsManagerInst.updateExtensions())
-        .catch(() => { });
+        .catch(() => {});
       ExtensionsManagerInst.accessToken = this.access_token;
 
       await ExtensionsManagerInst.getExtensionsPolicies();
       let profileExtensionsCheckRes = [];
 
       if (ExtensionsManagerInst.useLocalExtStorage) {
-        profileExtensionsCheckRes = await ExtensionsManagerInst.checkChromeExtensions(chromeExtensions).catch((e) => {
-          console.log('checkChromeExtensions error: ', e);
-          return [];
-        });
+        const promises = [
+          ExtensionsManagerInst.checkChromeExtensions(allExtensions)
+            .then(res => ({ profileExtensionsCheckRes: res }))
+            .catch((e) => {
+              console.log('checkChromeExtensions error: ', e);
+
+              return { profileExtensionsCheckRes: [] };
+            }),
+          ExtensionsManagerInst.checkLocalUserChromeExtensions(userChromeExtensions, this.profile_id)
+            .then(res => ({ profileUserExtensionsCheckRes: res }))
+            .catch((error) => {
+              console.log('checkUserChromeExtensions error: ', error);
+
+              return null;
+            }),
+        ];
+
+        const extensionsResult = await Promise.all(promises);
+
+        const profileExtensionPathRes = extensionsResult.find(el => 'profileExtensionsCheckRes' in el) || {};
+        const profileUserExtensionPathRes = extensionsResult.find(el => 'profileUserExtensionsCheckRes' in el);
+        profileExtensionsCheckRes =
+          (profileExtensionPathRes?.profileExtensionsCheckRes || []).concat(profileUserExtensionPathRes?.profileUserExtensionsCheckRes || []);
       }
 
       let extSettings;
       if (ExtensionsManagerInst.useLocalExtStorage) {
-        extSettings = BrowserUserDataManager.setExtPathsAndRemoveDeleted(preferences, profileExtensionsCheckRes);
+        extSettings = await setExtPathsAndRemoveDeleted(preferences, profileExtensionsCheckRes, this.profile_id);
       } else {
-        const originalExtensionsFolder = path.join(profilePath, 'Default', 'Extensions');
-        extSettings = await BrowserUserDataManager.setOriginalExtPaths(preferences, originalExtensionsFolder);
+        const originalExtensionsFolder = join(profilePath, 'Default', 'Extensions');
+        extSettings = await setOriginalExtPaths(preferences, originalExtensionsFolder);
       }
 
       this.extensionPathsToInstall =
@@ -439,13 +469,13 @@ class GoLogin {
 
       if (extSettings) {
         const currentExtSettings = preferences.extensions || {};
-        currentExtSettings.settings = extSettings
+        currentExtSettings.settings = extSettings;
         preferences.extensions = currentExtSettings;
       }
     }
 
     if (proxy.mode === 'gologin' || proxy.mode === 'tor') {
-      const autoProxyServer = _.get(profile, 'autoProxyServer');
+      const autoProxyServer = get(profile, 'autoProxyServer');
       const splittedAutoProxyServer = autoProxyServer.split('://');
       const splittedProxyAddress = splittedAutoProxyServer[1].split(':');
       const port = splittedProxyAddress[1];
@@ -454,12 +484,12 @@ class GoLogin {
         'mode': splittedAutoProxyServer[0],
         'host': splittedProxyAddress[0],
         port,
-        'username': _.get(profile, 'autoProxyUsername'),
-        'password': _.get(profile, 'autoProxyPassword'),
-      }
+        'username': get(profile, 'autoProxyUsername'),
+        'password': get(profile, 'autoProxyPassword'),
+      };
 
-      profile.proxy.username = _.get(profile, 'autoProxyUsername');
-      profile.proxy.password = _.get(profile, 'autoProxyPassword');
+      profile.proxy.username = get(profile, 'autoProxyUsername');
+      profile.proxy.password = get(profile, 'autoProxyPassword');
     }
     // console.log('proxy=', proxy);
 
@@ -470,6 +500,7 @@ class GoLogin {
     if (proxy.mode === 'none') {
       proxy = null;
     }
+
     this.proxy = proxy;
 
     await this.getTimeZone(proxy).catch((e) => {
@@ -478,21 +509,24 @@ class GoLogin {
     });
 
     const [latitude, longitude] = this._tz.ll;
-    const accuracy = this._tz.accuracy;
+    const { accuracy } = this._tz;
 
     const profileGeolocation = profile.geolocation;
     const tzGeoLocation = {
       latitude,
       longitude,
-      accuracy
+      accuracy,
     };
+
     profile.geoLocation = this.getGeolocationParams(profileGeolocation, tzGeoLocation);
     profile.name = name;
+    profile.name_base64 = Buffer.from(name).toString('base64');
+    profile.profile_id = this.profile_id;
 
     profile.webRtc = {
-      mode: _.get(profile, 'webRTC.mode') === 'alerted' ? 'public' : _.get(profile, 'webRTC.mode'),
-      publicIP: _.get(profile, 'webRTC.fillBasedOnIp') ? this._tz.ip : _.get(profile, 'webRTC.publicIp'),
-      localIps: _.get(profile, 'webRTC.localIps', []),
+      mode: get(profile, 'webRTC.mode') === 'alerted' ? 'public' : get(profile, 'webRTC.mode'),
+      publicIP: get(profile, 'webRTC.fillBasedOnIp') ? this._tz.ip : get(profile, 'webRTC.publicIp'),
+      localIps: get(profile, 'webRTC.localIps', []),
     };
 
     debug('profile.webRtc=', profile.webRtc);
@@ -501,11 +535,12 @@ class GoLogin {
 
     const audioContext = profile.audioContext || {};
     const { mode: audioCtxMode = 'off', noise: audioCtxNoise } = audioContext;
-    if (profile.timezone.fillBasedOnIp == false) {
+    if (profile.timezone.fillBasedOnIp==false) {
       profile.timezone = { id: profile.timezone.timezone };
     } else {
       profile.timezone = { id: this._tz.timezone };
     }
+
     profile.webgl_noise_value = profile.webGL.noise;
     profile.get_client_rects_noise = profile.webGL.getClientRectsNoise;
     profile.canvasMode = profile.canvas.mode;
@@ -516,22 +551,22 @@ class GoLogin {
     };
     profile.webgl = {
       metadata: {
-        vendor: _.get(profile, 'webGLMetadata.vendor'),
-        renderer: _.get(profile, 'webGLMetadata.renderer'),
-        mode: _.get(profile, 'webGLMetadata.mode') === 'mask',
-      }
+        vendor: get(profile, 'webGLMetadata.vendor'),
+        renderer: get(profile, 'webGLMetadata.renderer'),
+        mode: get(profile, 'webGLMetadata.mode') === 'mask',
+      },
     };
 
     profile.custom_fonts = {
       enable: !!fonts?.enableMasking,
-    }
+    };
 
     const gologin = this.convertPreferences(profile);
 
     debug(`Writing profile for screenWidth ${profilePath}`, JSON.stringify(gologin));
     gologin.screenWidth = this.resolution.width;
     gologin.screenHeight = this.resolution.height;
-    debug("writeCookesFromServer", this.writeCookesFromServer)
+    debug('writeCookesFromServer', this.writeCookesFromServer);
     if (this.writeCookesFromServer) {
       await this.writeCookiesToFile();
     }
@@ -543,7 +578,7 @@ class GoLogin {
       }
 
       try {
-        await BrowserUserDataManager.composeFonts(families, profilePath, this.differentOs);
+        await composeFonts(families, profilePath, this.differentOs);
       } catch (e) {
         console.trace(e);
       }
@@ -551,23 +586,20 @@ class GoLogin {
 
     const [languages] = this.language.split(';');
 
-    if (preferences.gologin == null) {
+    if (preferences.gologin==null) {
       preferences.gologin = {};
     }
 
     preferences.gologin.langHeader = gologin.language;
     preferences.gologin.languages = languages;
     // debug("convertedPreferences=", preferences.gologin)
-    await writeFile(path.join(profilePath, 'Default', 'Preferences'), JSON.stringify(_.merge(preferences, {
-      gologin
+    await writeFile(join(profilePath, 'Default', 'Preferences'), JSON.stringify(Object.assign(preferences, {
+      gologin,
     })));
 
-    // console.log('gologin=', _.merge(preferences, {
-    //   gologin
-    // }));
+    debug('Profile ready. Path: ', profilePath, 'PROXY', JSON.stringify(get(preferences, 'gologin.proxy')));
 
-    debug('Profile ready. Path: ', profilePath, 'PROXY', JSON.stringify(_.get(preferences, 'gologin.proxy')));
-    return {profilePath , profile};
+    return profilePath;
   }
 
   async commitProfile() {
@@ -583,8 +615,7 @@ class GoLogin {
     try {
       debug('Patching profile');
       await this.postFile('profile', dataBuff);
-    }
-    catch (e) {
+    } catch (e) {
       debug('CANNOT COMMIT PROFILE', e);
     }
 
@@ -592,16 +623,17 @@ class GoLogin {
   }
 
   profilePath() {
-    return path.join(this.tmpdir, `gologin_profile_${this.profile_id}`);
+    return join(this.tmpdir, `gologin_profile_${this.profile_id}`);
   }
 
   orbitaExtensionPath() {
-    return path.join(this.tmpdir, `orbita_extension_${this.profile_id}`);
+    return join(this.tmpdir, `orbita_extension_${this.profile_id}`);
   }
 
   getRandomInt(min, max) {
     min = Math.ceil(min);
     max = Math.floor(max);
+
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
@@ -609,47 +641,55 @@ class GoLogin {
     debug('CHECKING PORT AVAILABLE', port);
 
     try {
-      const { stdout, stderr } = await exec(`lsof -i:${port}`);
-      if (stdout && stdout.match(/LISTEN/gmi)) {
-        debug(`PORT ${port} IS BUSY`)
-        return false;
-      }
-    } catch (e) { }
-    debug(`PORT ${port} IS OPEN`);
+      const portAvailable = await isPortReachable(port, { host: 'localhost' });
+      if (portAvailable) {
+        debug(`PORT ${port} IS OPEN`);
 
-    return true;
+        return true;
+      }
+    } catch (e) {
+      console.log(e);
+    }
+
+    debug(`PORT ${port} IS BUSY`);
+
+    return false;
   }
 
   async getRandomPort() {
     let port = this.getRandomInt(20000, 40000);
-    let port_available = this.checkPortAvailable(port);
-    while (!port_available) {
+    let portAvailable = await this.checkPortAvailable(port);
+    while (!portAvailable) {
       port = this.getRandomInt(20000, 40000);
-      port_available = await this.checkPortAvailable(port);
+      portAvailable = await this.checkPortAvailable(port);
     }
+
     return port;
   }
 
   async getTimeZone(proxy) {
     debug('getting timeZone proxy=', proxy);
+
     if (this.timezone) {
       debug('getTimeZone from options', this.timezone);
       this._tz = this.timezone;
+
       return this._tz.timezone;
     }
 
     let data = null;
-    if (proxy !== null && proxy.mode !== "none") {
+    if (proxy!==null && proxy.mode !== 'none') {
       if (proxy.mode.includes('socks')) {
-        for (let i = 0; i < 5; i++) {
+        for (let i=0; i<5; i++) {
           try {
-            debug('getting timeZone socks try', i + 1);
+            debug('getting timeZone socks try', i+1);
+
             return this.getTimezoneWithSocks(proxy);
           } catch (e) {
             console.log(e.message);
           }
         }
-        throw new Error(`Socks proxy connection timed out`);
+        throw new Error('Socks proxy connection timed out');
       }
 
       const proxyUrl = `${proxy.mode}://${proxy.username}:${proxy.password}@${proxy.host}:${proxy.port}`;
@@ -658,8 +698,10 @@ class GoLogin {
     } else {
       data = await requests.get('https://time.gologin.com/timezone', { timeout: 20 * 1000, maxAttempts: 5 });
     }
+
     debug('getTimeZone finish', data.body);
     this._tz = JSON.parse(data.body);
+
     return this._tz.timezone;
   }
 
@@ -672,12 +714,13 @@ class GoLogin {
       const resultPassword = password ? ':' + password + '@' : '@';
       proxy += username + resultPassword;
     }
+
     proxy += host + ':' + port;
 
     const agent = new ProxyAgent(proxy, { tunnel: true, timeout: 10000 });
 
     const checkData = await new Promise((resolve, reject) => {
-      https.get('https://time.gologin.com/timezone', { agent }, (res) => {
+      _get('https://time.gologin.com/timezone', { agent }, (res) => {
         let resultResponse = '';
         res.on('data', (data) => resultResponse += data);
 
@@ -702,15 +745,17 @@ class GoLogin {
     if (!body.ip && checkData.statusCode.toString().startsWith('4')) {
       throw checkData;
     }
+
     debug('getTimeZone finish', body.body);
     this._tz = body;
+
     return this._tz.timezone;
   }
 
   async spawnArguments() {
     const profile_path = this.profilePath();
 
-    let proxy = this.proxy;
+    let { proxy } = this;
     proxy = `${proxy.mode}://${proxy.host}:${proxy.port}`;
 
     const env = {};
@@ -721,29 +766,30 @@ class GoLogin {
       console.error('Proxy Error. Check it and try again.');
       throw e;
     });
-    env['TZ'] = tz;
 
-    let params = [`--proxy-server=${proxy}`, `--user-data-dir=${profile_path}`, `--password-store=basic`, `--tz=${tz}`, `--lang=en`]
+    env.TZ = tz;
+
+    let params = [`--proxy-server=${proxy}`, `--user-data-dir=${profile_path}`, '--password-store=basic', `--tz=${tz}`, '--lang=en'];
     if (Array.isArray(this.extra_params) && this.extra_params.length) {
       params = params.concat(this.extra_params);
     }
 
     if (this.remote_debugging_port) {
-      params.push(`--remote-debugging-port=${remote_debugging_port}`);
+      params.push(`--remote-debugging-port=${this.remote_debugging_port}`);
     }
 
     return params;
   }
 
   async spawnBrowser() {
-    let remote_debugging_port = this.remote_debugging_port;
+    let { remote_debugging_port } = this;
     if (!remote_debugging_port) {
       remote_debugging_port = await this.getRandomPort();
     }
 
     const profile_path = this.profilePath();
 
-    let proxy = this.proxy;
+    let { proxy } = this;
     let proxy_host = '';
     if (proxy) {
       proxy_host = this.proxy.host;
@@ -753,7 +799,7 @@ class GoLogin {
     this.port = remote_debugging_port;
 
     const ORBITA_BROWSER = this.executablePath || this.browserChecker.getOrbitaPath;
-    debug(`ORBITA_BROWSER=${ORBITA_BROWSER}`)
+    debug(`ORBITA_BROWSER=${ORBITA_BROWSER}`);
     const env = {};
     Object.keys(process.env).forEach((key) => {
       env[key] = process.env[key];
@@ -762,15 +808,16 @@ class GoLogin {
       console.error('Proxy Error. Check it and try again.');
       throw e;
     });
-    env['TZ'] = tz;
+
+    env.TZ = tz;
 
     if (this.vnc_port) {
-      const script_path = path.resolve(__dirname, './run.sh');
+      const script_path = _resolve(__dirname, './run.sh');
       debug('RUNNING', script_path, ORBITA_BROWSER, remote_debugging_port, proxy, profile_path, this.vnc_port);
       execFile(
         script_path,
         [ORBITA_BROWSER, remote_debugging_port, proxy, profile_path, this.vnc_port, tz],
-        { env }
+        { env },
       );
     } else {
       const [splittedLangs] = this.language.split(';');
@@ -782,7 +829,7 @@ class GoLogin {
       let params = [
         `--remote-debugging-port=${remote_debugging_port}`,
         `--user-data-dir=${profile_path}`,
-        `--password-store=basic`,
+        '--password-store=basic',
         `--tz=${tz}`,
         `--lang=${browserLang}`,
       ];
@@ -800,6 +847,7 @@ class GoLogin {
             this.extra_params.splice(index, 1);
           });
         }
+
         params.push(`--load-extension=${this.extensionPathsToInstall.join(',')}`);
       }
 
@@ -808,6 +856,7 @@ class GoLogin {
         if (this.differentOs) {
           arg = '--font-masking-mode=3';
         }
+
         if (this.profileOs === 'android') {
           arg = '--font-masking-mode=1';
         }
@@ -825,36 +874,46 @@ class GoLogin {
         params = params.concat(this.extra_params);
       }
 
+      if (this.restoreLastSession) {
+        params.push('--restore-last-session');
+      }
+
+      console.log(params);
       const child = execFile(ORBITA_BROWSER, params, { env });
       // const child = spawn(ORBITA_BROWSER, params, { env, shell: true });
       child.stdout.on('data', (data) => debug(data.toString()));
-      debug('SPAWN CMD', ORBITA_BROWSER, params.join(" "));
+      debug('SPAWN CMD', ORBITA_BROWSER, params.join(' '));
     }
 
-    debug('GETTING WS URL FROM BROWSER');
+    if (this.waitWebsocket) {
+      debug('GETTING WS URL FROM BROWSER');
+      const data = await requests.get(`http://127.0.0.1:${remote_debugging_port}/json/version`, { json: true });
 
-    let data = await requests.get(`http://127.0.0.1:${remote_debugging_port}/json/version`, { json: true });
+      debug('WS IS', get(data, 'body.webSocketDebuggerUrl', ''));
+      this.is_active = true;
 
-    debug('WS IS', _.get(data, 'body.webSocketDebuggerUrl', ''))
-    this.is_active = true;
+      return get(data, 'body.webSocketDebuggerUrl', '');
+    }
 
-    return _.get(data, 'body.webSocketDebuggerUrl', '');
+    return '';
   }
 
   async createStartupAndSpawnBrowser() {
     await this.createStartup();
+
     return this.spawnBrowser();
   }
 
   async clearProfileFiles() {
-    await rimraf(path.join(this.tmpdir, `gologin_profile_${this.profile_id}`));
-    await rimraf(path.join(this.tmpdir, `gologin_${this.profile_id}_upload.zip`));
+    await rimraf(join(this.tmpdir, `gologin_profile_${this.profile_id}`), () => null);
+    await rimraf(join(this.tmpdir, `gologin_${this.profile_id}_upload.zip`), () => null);
   }
 
   async stopAndCommit(options, local = false) {
     if (this.is_stopping) {
       return true;
     }
+
     const is_posting = options.posting ||
       options.postings || // backward compability
       false;
@@ -876,29 +935,31 @@ class GoLogin {
     await this.clearProfileFiles();
 
     if (!local) {
-      await rimraf(path.join(this.tmpdir, `gologin_${this.profile_id}.zip`));
+      await rimraf(join(this.tmpdir, `gologin_${this.profile_id}.zip`), () => null);
     }
+
     debug(`PROFILE ${this.profile_id} STOPPED AND CLEAR`);
+
     return false;
   }
-
 
   async stopBrowser() {
     if (!this.port) {
       throw new Error('Empty GoLogin port');
     }
+
     const ls = await spawn('fuser',
       [
         '-k TERM',
-        `-n tcp ${this.port}`
+        `-n tcp ${this.port}`,
       ],
       {
-        shell: true
-      }
+        shell: true,
+      },
     );
+
     debug('browser killed');
   }
-
 
   async sanitizeProfile() {
     const remove_dirs = [
@@ -916,11 +977,15 @@ class GoLogin {
       `${SEPARATOR}oofiananboodjbbmdelgdommihjbkfag`,
       `${SEPARATOR}SafetyTips`,
       `${SEPARATOR}fonts`,
+      `${SEPARATOR}BrowserMetrics`,
+      `${SEPARATOR}BrowserMetrics-spare.pma`,
     ];
+
     const that = this;
 
     await Promise.all(remove_dirs.map(d => {
-      const path_to_remove = `${that.profilePath()}${d}`
+      const path_to_remove = `${that.profilePath()}${d}`;
+
       return new Promise(resolve => {
         debug('DROPPING', path_to_remove);
         rimraf(path_to_remove, { maxBusyTries: 100 }, (e) => {
@@ -928,11 +993,11 @@ class GoLogin {
           resolve();
         });
       });
-    }))
+    }));
   }
 
   async getProfileDataToUpdate() {
-    const zipPath = path.join(this.tmpdir, `gologin_${this.profile_id}_upload.zip`);
+    const zipPath = join(this.tmpdir, `gologin_${this.profile_id}_upload.zip`);
     const zipExists = await access(zipPath).then(() => true).catch(() => false);
     if (zipExists) {
       await unlink(zipPath);
@@ -942,41 +1007,31 @@ class GoLogin {
     debug('profile sanitized');
 
     const profilePath = this.profilePath();
-    const fileBuff = await new Promise((resolve, reject) => zipdir(profilePath,
-      {
-        saveTo: zipPath,
-        filter: (path) => !/RunningChromeVersion/.test(path),
-      }, (err, buffer) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
-        resolve(buffer);
-      })
-    )
+    const fileBuff = await archiveProfile(profilePath);
 
     debug('PROFILE ZIP CREATED', profilePath, zipPath);
+
     return fileBuff;
   }
 
   async profileExists() {
     const profileResponse = await requests.post(`${API_URL}/browser`, {
       headers: {
-        'Authorization': `Bearer ${this.access_token}`
+        'Authorization': `Bearer ${this.access_token}`,
       },
       json: {
 
-      }
-    })
+      },
+    });
 
     if (profileResponse.statusCode !== 200) {
       return false;
     }
+
     debug('profile is', profileResponse.body);
+
     return true;
   }
-
 
   async getRandomFingerprint(options) {
     let os = 'lin';
@@ -985,11 +1040,11 @@ class GoLogin {
       os = options.os;
     }
 
-    let fingerprint = await requests.get(`${API_URL}/browser/fingerprint?os=${os}`, {
+    const fingerprint = await requests.get(`${API_URL}/browser/fingerprint?os=${os}`,{
       headers: {
         'Authorization': `Bearer ${this.access_token}`,
         'User-Agent': 'gologin-api',
-      }
+      },
     });
 
     return JSON.parse(fingerprint.body);
@@ -999,14 +1054,14 @@ class GoLogin {
     debug('createProfile', options);
 
     const fingerprint = await this.getRandomFingerprint(options);
-    debug("fingerprint=", fingerprint)
+    debug('fingerprint=', fingerprint);
 
     if (fingerprint.statusCode === 500) {
-      throw new Error("no valid random fingerprint check os param");
+      throw new Error('no valid random fingerprint check os param');
     }
 
     if (fingerprint.statusCode === 401) {
-      throw new Error("invalid token");
+      throw new Error('invalid token');
     }
 
     const { navigator, fonts, webGLMetadata, webRTC } = fingerprint;
@@ -1014,8 +1069,8 @@ class GoLogin {
     if (deviceMemory < 1) {
       deviceMemory = 1;
     }
-    // navigator.deviceMemory = deviceMemory*1024; //fix failed api
-    navigator.deviceMemory = deviceMemory;
+
+    navigator.deviceMemory = deviceMemory*1024;
     webGLMetadata.mode = webGLMetadata.mode === 'noise' ? 'mask' : 'off';
 
     const json = {
@@ -1033,20 +1088,11 @@ class GoLogin {
         mode: 'alerted',
       },
     };
-    let user_agent = options.navigator?.userAgent;
-    let orig_user_agent = json.navigator.userAgent;
+
+    const user_agent = options.navigator?.userAgent;
+    const orig_user_agent = json.navigator.userAgent;
     Object.keys(options).map((e) => {
-      if (e === "navigator") {
-        json["navigator"] = { ...json["navigator"], ...options["navigator"] }
-      }
-      else
-      if(e === 'storage')
-      {
-        json['storage'] = {...json['storage'], ...options['storage']}
-      }
-      else {
-        json[e] = options[e]
-      }
+      json[e] = options[e];
     });
     if (user_agent === 'random') {
       json.navigator.userAgent = orig_user_agent;
@@ -1061,14 +1107,16 @@ class GoLogin {
       json,
     });
 
-    if (response.body.statusCode === 400) {
+    if (response.statusCode === 400) {
       throw new Error(`gologin failed account creation with status code, ${response.statusCode} DATA  ${JSON.stringify(response.body.message)}`);
     }
 
-    if (response.body.statusCode === 500) {
+    if (response.statusCode === 500) {
       throw new Error(`gologin failed account creation with status code, ${response.statusCode}`);
     }
+
     debug(JSON.stringify(response.body));
+
     return response.body.id;
   }
 
@@ -1087,20 +1135,26 @@ class GoLogin {
     const profile = await this.getProfile();
 
     if (options.navigator) {
-      Object.keys(options.navigator).map((e) => { profile.navigator[e] = options.navigator[e] });
+      Object.keys(options.navigator).map((e) => {
+        profile.navigator[e]=options.navigator[e];
+      });
     }
 
-    Object.keys(options).filter(e => e !== 'navigator').map((e) => { profile[e] = options[e] });
+    Object.keys(options).filter(e => e !== 'navigator').map((e) => {
+      profile[e]=options[e];
+    });
 
     debug('update profile', profile);
-    const response = await requests.put(`https://api.gologin.com/browser/${options.id}`, {
+    const response = await requests.put(`https://api.gologin.com/browser/${options.id}`,{
       json: profile,
       headers: {
-        'Authorization': `Bearer ${this.access_token}`
-      }
+        'Authorization': `Bearer ${this.access_token}`,
+      },
     });
+
     debug('response', JSON.stringify(response.body));
-    return response.body
+
+    return response.body;
   }
 
   setActive(is_active) {
@@ -1116,17 +1170,18 @@ class GoLogin {
         accuracy: Number(tzGeolocationParams.accuracy),
       };
     }
+
     return {
       mode: profileGeolocationParams.mode,
       latitude: profileGeolocationParams.latitude,
       longitude: profileGeolocationParams.longitude,
       accuracy: profileGeolocationParams.accuracy,
-    }
-  };
+    };
+  }
 
   getViewPort() {
     return { ...this.resolution };
-  };
+  }
 
   async postCookies(profileId, cookies) {
     const formattedCookies = cookies.map(cookie => {
@@ -1137,7 +1192,7 @@ class GoLogin {
       return cookie;
     });
 
-    const response = await BrowserUserDataManager.uploadCookies({
+    const response = await uploadCookies({
       profileId,
       cookies: formattedCookies,
       API_BASE_URL: API_URL,
@@ -1152,7 +1207,7 @@ class GoLogin {
   }
 
   async getCookies(profileId) {
-    const response = await BrowserUserDataManager.downloadCookies({
+    const response = await downloadCookies({
       profileId,
       API_BASE_URL: API_URL,
       ACCESS_TOKEN: this.access_token,
@@ -1168,15 +1223,26 @@ class GoLogin {
     }
 
     const resultCookies = cookies.map((el) => ({ ...el, value: Buffer.from(el.value) }));
-    const chunckInsertValues = CookiesManager.getChunckedInsertValues(resultCookies);
-    await axios.post(`${process.env.SERVER_URL}/browser`, {
-      cookiesFilePath: this.cookiesFilePath,
-      chunkedInsertValues: chunckInsertValues
-    })
+
+    let db;
+    try {
+      db = await getDB(this.cookiesFilePath, false);
+      const chunckInsertValues = getChunckedInsertValues(resultCookies);
+
+      for (const [query, queryParams] of chunckInsertValues) {
+        const insertStmt = await db.prepare(query);
+        await insertStmt.run(queryParams);
+        await insertStmt.finalize();
+      }
+    } catch (error) {
+      console.log(error.message);
+    } finally {
+      await db && db.close();
+    }
   }
 
   async uploadProfileCookiesToServer() {
-    const cookies = await CookiesManager.loadCookiesFromFile(this.cookiesFilePath);
+    const cookies = await loadCookiesFromFile(this.cookiesFilePath);
     if (!cookies.length) {
       return;
     }
@@ -1186,7 +1252,7 @@ class GoLogin {
 
   async start() {
     if (this.is_remote) {
-      return this.startRemote()
+      return this.startRemote();
     }
 
     if (!this.executablePath) {
@@ -1200,22 +1266,22 @@ class GoLogin {
       throw new Error(`Orbita browser is not exists on path ${ORBITA_BROWSER}, check executablePath param`);
     }
 
-    const {profile} = await this.createStartup();
+    await this.createStartup();
     // await this.createBrowserExtension();
     const wsUrl = await this.spawnBrowser();
     this.setActive(true);
-    return { status: 'success', wsUrl , profile };
+
+    return { status: 'success', wsUrl };
   }
 
   async startLocal() {
-    const {profile} = await this.createStartup(true);
+    await this.createStartup(true);
     // await this.createBrowserExtension();
     const wsUrl = await this.spawnBrowser();
-    
     this.setActive(true);
-    return { status: 'success', wsUrl , profile };
-  }
 
+    return { status: 'success', wsUrl };
+  }
 
   async stop() {
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -1231,11 +1297,11 @@ class GoLogin {
     await this.stopAndCommit(opts, true);
   }
 
-  async waitDebuggingUrl(delay_ms, try_count = 0) {
+  async waitDebuggingUrl(delay_ms, try_count=0) {
     await delay(delay_ms);
     const url = `https://${this.profile_id}.orbita.gologin.com/json/version`;
     console.log('try_count=', try_count, 'url=', url);
-    const response = await requests.get(url)
+    const response = await requests.get(url);
     let wsUrl = '';
     console.log('response', response.body);
 
@@ -1248,12 +1314,14 @@ class GoLogin {
       wsUrl = parsedBody.webSocketDebuggerUrl;
     } catch (e) {
       if (try_count < 3) {
-        return this.waitDebuggingUrl(delay_ms, try_count + 1);
+        return this.waitDebuggingUrl(delay_ms, try_count+1);
       }
-      return { 'status': 'failure', wsUrl, 'message': 'Check proxy settings', 'profile_id': this.profile_id }
+
+      return { 'status': 'failure', wsUrl, 'message': 'Check proxy settings', 'profile_id': this.profile_id };
     }
 
-    wsUrl = wsUrl.replace('ws://', `wss://`).replace('127.0.0.1', `${this.profile_id}.orbita.gologin.com`)
+    wsUrl = wsUrl.replace('ws://', 'wss://').replace('127.0.0.1', `${this.profile_id}.orbita.gologin.com`);
+
     return wsUrl;
   }
 
@@ -1267,23 +1335,21 @@ class GoLogin {
     */
 
     // if (profileResponse.body === 'ok') {
-
-    // Get profile if remote
     const profile = await this.getProfile();
 
     const profileResponse = await requests.post(`https://api.gologin.com/browser/${this.profile_id}/web`, {
       headers: {
-        'Authorization': `Bearer ${this.access_token}`
-      }
+        'Authorization': `Bearer ${this.access_token}`,
+      },
     });
 
     debug('profileResponse', profileResponse.statusCode, profileResponse.body);
 
     if (profileResponse.statusCode === 401) {
-      throw new Error("invalid token");
+      throw new Error('invalid token');
     }
 
-    const { navigator = {}, fonts, os: profileOs } = profile;
+    const { navigator = {}, fonts, os: profileOs  } = profile;
     this.fontsMasking = fonts?.enableMasking;
     this.profileOs = profileOs;
     this.differentOs =
@@ -1297,6 +1363,7 @@ class GoLogin {
       resolution = '1920x1080',
       language = 'en-US,en;q=0.9',
     } = navigator;
+
     this.language = language;
     const [screenWidth, screenHeight] = resolution.split('x');
     this.resolution = {
@@ -1304,9 +1371,9 @@ class GoLogin {
       height: parseInt(screenHeight, 10),
     };
 
-    let wsUrl = await this.waitDebuggingUrl(delay_ms);
-    if (wsUrl != '') {
-      return { 'status': 'success', wsUrl }
+    const wsUrl = await this.waitDebuggingUrl(delay_ms);
+    if (wsUrl !== '') {
+      return { 'status': 'success', wsUrl };
     }
 
     return { 'status': 'failure', 'message': profileResponse.body };
@@ -1316,9 +1383,10 @@ class GoLogin {
     debug(`stopRemote ${this.profile_id}`);
     const profileResponse = await requests.delete(`https://api.gologin.com/browser/${this.profile_id}/web`, {
       headers: {
-        'Authorization': `Bearer ${this.access_token}`
-      }
+        'Authorization': `Bearer ${this.access_token}`,
+      },
     });
+
     console.log(`stopRemote ${profileResponse.body}`);
     if (profileResponse.body) {
       return JSON.parse(profileResponse.body);
@@ -1328,8 +1396,20 @@ class GoLogin {
   getAvailableFonts() {
     return fontsCollection
       .filter(elem => elem.fileNames)
-      .map(elem => elem.name)
+      .map(elem => elem.name);
+  }
+
+  async changeProfileResolution(resolution) {
+    return updateProfileResolution(this.profile_id, this.access_token, resolution);
+  }
+
+  async changeProfileUserAgent(userAgent) {
+    return updateProfileUserAgent(this.profile_id, this.access_token, userAgent);
+  }
+
+  async changeProfileProxy(proxyData) {
+    return updateProfileProxy(this.profile_id, this.access_token, proxyData);
   }
 }
 
-module.exports = { GoLogin, debug };
+export default GoLogin;

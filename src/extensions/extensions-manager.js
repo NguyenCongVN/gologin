@@ -1,28 +1,25 @@
-const path = require('path');
-const request = require('requestretry').defaults({ timeout: 60000 });
-const fs = require('fs');
-const { mkdir, readdir, rmdir } = require('fs').promises;
-const os = require('os');
+import { createWriteStream, promises as _promises } from 'fs';
+import { join, sep } from 'path';
+import request from 'requestretry';
 
-const  ExtensionsExtractor = require('./extensions-extractor');
+import { CHROME_EXTENSIONS_PATH, composeExtractionPromises, USER_EXTENSIONS_PATH } from '../utils/common.js';
+import UserExtensionsManager from './user-extensions-manager.js';
 
-const HOMEDIR = os.homedir();
-const CHROME_EXT_DIR_NAME = 'chrome-extensions';
-const EXTENSIONS_PATH = path.join(HOMEDIR, '.gologin', 'extensions');
-const CHROME_EXTENSIONS_PATH = path.join(EXTENSIONS_PATH, CHROME_EXT_DIR_NAME);
-const EXTENSION_URL = 'https://clients2.google.com/service/update2/crx?response=redirect&acceptformat=crx2,crx3&x=id%3D{ext_id}%26uc&prodversion=97.0.4692.71';
+const { mkdir, readdir, rmdir, unlink } = _promises;
 
-class ExtensionsManager {
-  #USER_AGENT = '';
-  #API_BASE_URL = '';
-  #ACCESS_TOKEN = '';
+const EXTENSION_URL =
+  'https://clients2.google.com/service/update2/crx?response=redirect&acceptformat=crx2,crx3&x=id%3D{ext_id}%26uc&prodversion=97.0.4692.71';
+
+export class ExtensionsManager extends UserExtensionsManager {
   #existedChromeExtensions = [];
   #inited = false;
   #useLocalExtStorage = false;
+  #useCookiesExt = false;
   #deleteProfileExtFolders = false;
-  #deleteWidevineCdmFolder = false;
+  #extensionsUpdating = true;
 
   constructor() {
+    super();
     if (!ExtensionsManager.instance) {
       ExtensionsManager.instance = this;
     }
@@ -30,47 +27,50 @@ class ExtensionsManager {
     return ExtensionsManager.instance;
   }
 
-  get isInited() { return this.#inited }
-  get useLocalExtStorage() { return this.#useLocalExtStorage }
-  get deleteProfileExtFolders() { return this.#deleteProfileExtFolders }
-  get deleteWidevineCdmFolder() { return this.#deleteWidevineCdmFolder }
-
-  set userAgent(userAgent) {
-    if (!userAgent) {
-      return;
-    }
-
-    this.#USER_AGENT = userAgent;
-  }
-
-  set accessToken(accessToken) {
-    if (!accessToken) {
-      return;
-    }
-
-    this.#ACCESS_TOKEN = accessToken;
-  }
-
-  set apiUrl(apiUrl) {
-    if (!apiUrl) {
-      return;
-    }
-
-    this.#API_BASE_URL = apiUrl;
-  }
-
-  init() {
+  async init() {
     if (this.#inited) {
       return Promise.resolve();
     }
 
-    return mkdir(CHROME_EXTENSIONS_PATH, { recursive: true })
-      .then(() => readdir(CHROME_EXTENSIONS_PATH))
-      .then(filesList => {
-        this.#existedChromeExtensions = filesList;
-        this.#inited = true;
-      })
-      .catch((e) => console.log('ExtensionsManager init error:', e));
+    const promises = [
+      mkdir(CHROME_EXTENSIONS_PATH, { recursive: true })
+        .then(() => readdir(CHROME_EXTENSIONS_PATH))
+        .then(filesList => {
+          this.#existedChromeExtensions = filesList.filter(extPath => !extPath.includes('.zip'));
+
+          return filesList.map(fileName => fileName.includes('.zip') ?
+            unlink(join(CHROME_EXTENSIONS_PATH, fileName)) :
+            Promise.resolve());
+        })
+        .then(promisesToDelete => Promise.all(promisesToDelete))
+        .catch((e) => console.log('ExtensionsManager init error:', e)),
+      mkdir(USER_EXTENSIONS_PATH, { recursive: true })
+        .then(() => readdir(USER_EXTENSIONS_PATH))
+        .then(filesList => {
+          this.existedUserExtensions = filesList.filter(extPath => !extPath.includes('.zip'));
+
+          return filesList.map(fileName => fileName.includes('.zip') ?
+            unlink(join(USER_EXTENSIONS_PATH, fileName)) :
+            Promise.resolve());
+        })
+        .then((promisesToDelete) => Promise.all(promisesToDelete))
+        .catch((e) => console.log('error creating user extensions folder:', e)),
+    ];
+
+    return Promise.all(promises).then(() => this.#inited = true);
+  }
+
+  get isInited() {
+    return this.#inited;
+  }
+  get useLocalExtStorage() {
+    return this.#useLocalExtStorage;
+  }
+  get deleteProfileExtFolders() {
+    return this.#deleteProfileExtFolders;
+  }
+  get useCookiesExt() {
+    return this.#useCookiesExt;
   }
 
   get existedChromeExtensionsList() {
@@ -83,21 +83,27 @@ class ExtensionsManager {
     }
 
     const extensionsToDownload = this.#getExtensionsToDownload(profileExtensions);
-    if (!extensionsToDownload) {
-      return [];
-    }
 
     const downloadedArchives = await this.downloadChromeExtensions(extensionsToDownload);
     const filteredArchives = downloadedArchives.filter(Boolean);
-    const promises = composeExtractionPromises(filteredArchives);
 
-    await Promise.all(promises);
+    if (filteredArchives.length) {
+      const [downloadedFolders] = filteredArchives.map(archivePath => archivePath.split(sep).reverse());
+      this.#existedChromeExtensions = [...this.#existedChromeExtensions, ...downloadedFolders];
+
+      const promises = composeExtractionPromises(filteredArchives);
+
+      await Promise.all(promises);
+    }
+
     return this.getExtensionsStrToIncludeAsOrbitaParam(profileExtensions);
   }
 
   #getExtensionsToDownload(profileExtensions) {
-    const existedOriginalIds = this.#existedChromeExtensions.map((val) => {
+    const existedExtensionsFolders = [...this.#existedChromeExtensions, ...this.existedUserExtensions];
+    const existedOriginalIds = existedExtensionsFolders.map((val) => {
       const [originalId] = val.split('@');
+
       return originalId;
     });
 
@@ -127,7 +133,7 @@ class ExtensionsManager {
       const extVer = getExtVersion(reqPath);
 
       const buffer = await new Promise((res) => {
-        const chunks = []
+        const chunks = [];
         request.get(extUrl, {
           maxAttempts: 3,
           retryDelay: 1000,
@@ -143,12 +149,13 @@ class ExtensionsManager {
         zipExt = crxToZip(buffer);
       } catch (e) {
         console.log(e);
+
         return '';
       }
 
-      const archiveZipPath = path.join(CHROME_EXTENSIONS_PATH, originalId + '@' + extVer + '.zip');
+      const archiveZipPath = join(CHROME_EXTENSIONS_PATH, originalId + '@' + extVer + '.zip');
 
-      const archiveZip = fs.createWriteStream(archiveZipPath);
+      const archiveZip = createWriteStream(archiveZipPath);
       archiveZip.write(zipExt);
       archiveZip.close();
 
@@ -159,10 +166,11 @@ class ExtensionsManager {
   }
 
   async getExtensionsPolicies() {
-    const globalExtConfig = await request.get(`${this.#API_BASE_URL}/gologin-settings/chrome_ext_policies`, {
+    const globalExtConfig = await request.get(`${this.apiBaseUrl}/gologin-settings/chrome_ext_policies`, {
       headers: {
-        Authorization: `Bearer ${this.#ACCESS_TOKEN}`,
-        'user-agent': this.#USER_AGENT,
+        Authorization: `Bearer ${this.accessToken}`,
+        'user-agent': this.userAgent,
+        'x-two-factor-token': this.twoFaKey || '',
       },
       json: true,
       maxAttempts: 2,
@@ -175,40 +183,12 @@ class ExtensionsManager {
     const {
       useLocalExtStorage = false,
       deleteProfileExtFolders = false,
-      deleteWidevineCdmFolder = false,
+      useCookiesExt = true,
     } = chromeExtPolicies;
 
     this.#useLocalExtStorage = useLocalExtStorage;
     this.#deleteProfileExtFolders = deleteProfileExtFolders;
-    this.#deleteWidevineCdmFolder = deleteWidevineCdmFolder;
-  }
-
-  async getExtensionsStrToIncludeAsOrbitaParam(profileExtensions = []) {
-    if (!(Array.isArray(profileExtensions) && profileExtensions.length)) {
-      return [];
-    }
-
-    const chromeExtList = await readdir(CHROME_EXTENSIONS_PATH);
-    if (!chromeExtList) {
-      return [];
-    }
-
-    const formattedIdsList = chromeExtList.map((el) => {
-      const [originalId] = el.split('@');
-      return {
-        originalId,
-        folderName: el,
-      };
-    });
-
-    return profileExtensions.map((el) => {
-      const extExisted = formattedIdsList.find(chromeExtPathElem => chromeExtPathElem.originalId === el);
-      if (!extExisted) {
-        return '';
-      }
-
-      return path.join(CHROME_EXTENSIONS_PATH, extExisted.folderName);
-    }).filter(Boolean);
+    this.#useCookiesExt = useCookiesExt;
   }
 
   async updateExtensions() {
@@ -220,7 +200,7 @@ class ExtensionsManager {
     const oldFolders = [];
 
     const versionCheckPromises = fileList.map(async (extension) => {
-      if (!extension.includes('@')) {
+      if (!extension.includes('@') || extension.includes('.zip')) {
         return '';
       }
 
@@ -234,7 +214,8 @@ class ExtensionsManager {
         return '';
       }
 
-      oldFolders.push(path.join(CHROME_EXTENSIONS_PATH, extension));
+      oldFolders.push(join(CHROME_EXTENSIONS_PATH, extension));
+
       return originalId;
     });
 
@@ -247,7 +228,71 @@ class ExtensionsManager {
       rmdir(folder, { recursive: true, maxRetries: 3 }).catch(() => {})
     ));
 
-    return Promise.all(removeFoldersPromises);
+    await Promise.all(removeFoldersPromises).then(() => this.#extensionsUpdating = false);
+  }
+
+  async checkLocalExtensions() {
+    if (this.#extensionsUpdating || !this.accessToken) {
+      return;
+    }
+
+    const fileList = await readdir(CHROME_EXTENSIONS_PATH).catch(() => []);
+    if (!fileList.length) {
+      return;
+    }
+
+    const extensionsIds = fileList.filter(folderName => folderName.includes('@') && !folderName.includes('.zip'))
+      .map(folderName => {
+        const [name] = folderName.split('@');
+
+        return name;
+      });
+
+    if (!extensionsIds.length) {
+      return;
+    }
+
+    this.insertExtensionsToDb(extensionsIds);
+  }
+
+  async insertExtensionsToDb(extensionsIds, pathToExtensions = CHROME_EXTENSIONS_PATH) {
+    if (!extensionsIds?.length) {
+      return;
+    }
+
+    const checkResponse = await request(`${this.apiBaseUrl}/extensions/check`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        'user-agent': this.userAgent,
+        'x-two-factor-token': this.twoFaKey || '',
+      },
+      body: {
+        extensionsIds,
+      },
+      json: true,
+    });
+
+    const { extensionsToAdd = [] } = checkResponse.body;
+
+    if (!extensionsToAdd.length) {
+      return;
+    }
+
+    const extensionsToUpdate = await this.getExtensionsNameAndImage(extensionsToAdd, pathToExtensions);
+
+    request(`${this.apiBaseUrl}/extensions/create`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        'user-agent': this.userAgent,
+        'x-two-factor-token': this.twoFaKey || '',
+      },
+      body: {
+        extensionsInfo: extensionsToUpdate,
+      },
+      json: true,
+    });
   }
 
   getExtensionsToInstall(extensionsFromPref, extensionsFromDB) {
@@ -257,17 +302,19 @@ class ExtensionsManager {
 
     const objectEntries = Object.entries(extensionsFromPref);
     const extensionsInPref = objectEntries?.map(([_, settings]) => {
-      const [extFolderName] = settings.path.split(path.sep).reverse();
+      const [extFolderName] = settings.path.split(sep).reverse();
       const [originalId] = extFolderName.split('@');
+
       return originalId;
     }) || [];
 
     return extensionsFromDB.reduce((acc, extension) => {
-      const [extFolderName] = extension.split(path.sep).reverse();
+      const [extFolderName] = extension.split(sep).reverse();
       const [originalId] = extFolderName.split('@');
       if (!extensionsInPref.includes(originalId)) {
         acc.push(extension);
       }
+
       return acc;
     }, []);
   }
@@ -294,6 +341,7 @@ const crxToZip = (buf) => {
     const signatureLength = calcLength(buf[12], buf[13], buf[14], buf[15]);
 
     const zipStartOffset = 16 + publicKeyLength + signatureLength;
+
     return buf.slice(zipStartOffset, buf.length);
   }
 
@@ -301,7 +349,7 @@ const crxToZip = (buf) => {
   const zipStartOffset = 12 + headerSize;
 
   return buf.slice(zipStartOffset, buf.length);
-}
+};
 
 const calcLength = (a, b, c, d) => {
   let length = 0;
@@ -310,8 +358,9 @@ const calcLength = (a, b, c, d) => {
   length += b << 8;
   length += c << 16;
   length += d << 24 >>> 0;
+
   return length;
-}
+};
 
 const getExtMetadata = (extUrl) => (
   request.head(extUrl, {
@@ -327,18 +376,9 @@ const getExtVersion = (metadata) => {
   const [extName = ''] = extFullName.split('.');
   const splitExtName = extName.split('_');
   splitExtName.shift();
+
   return splitExtName.join('_');
 };
 
-const composeExtractionPromises = (filteredArchives) => (
-  filteredArchives.map((extArchivePath) => {
-    const [archiveName = ''] = extArchivePath.split(path.sep).reverse();
-    const [destFolder] = archiveName.split('.');
-    return ExtensionsExtractor.extractExtension(extArchivePath, path.join(CHROME_EXTENSIONS_PATH, destFolder))
-      .then(() => ExtensionsExtractor.deleteExtensionArchive(extArchivePath))
-  })
-);
-
-module.exports = ExtensionsManager;
-
+export default ExtensionsManager;
 
