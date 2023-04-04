@@ -1,8 +1,16 @@
+/* eslint-disable camelcase */
+/* eslint-disable max-lines */
 import { execFile, spawn } from 'child_process';
 import debug from 'debug';
 import decompress from 'decompress';
 import decompressUnzip from 'decompress-unzip';
-import { existsSync, mkdirSync, promises as _promises } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  promises as _promises,
+  readFileSync,
+  writeFileSync,
+} from 'fs';
 import { get as _get } from 'https';
 import { tmpdir } from 'os';
 import { join, resolve as _resolve, sep } from 'path';
@@ -204,7 +212,6 @@ export class GoLogin {
       () => null,
     );
   }
-
   /**
    * The commitProfile function commits any changes made to the profile by
    * uploading a zip file containing the profile data to a remote server.
@@ -948,9 +955,33 @@ export class GoLogin {
    * @param {any} profile_id
    * @returns {any}
    */
-  async getProfile(profile_id) {
+  async getProfile(profile_id, local = false) {
     const id = profile_id || this.profile_id;
     debug('getProfile', this.access_token, id);
+
+    try {
+
+      // if local, get profile from file
+      if (local) {
+        // read profile from file
+        // read from file named profile_local_ + profile_id
+
+        // check that file is exists
+        if (!existsSync(this.profileArgumentLocalPath)) {
+          throw new Error('Profile not found');
+        }
+
+        const profile = readFileSync(
+          this.profileArgumentLocalPath,
+          'utf8',
+        );
+
+        return JSON.parse(profile);
+      }
+    } catch (e) {
+      debug('file local profile not found! Try to get profile from server');
+    }
+
     const profileResponse = await requests.get(`${API_URL}/browser/${id}`, {
       headers: {
         Authorization: `Bearer ${this.access_token}`,
@@ -976,6 +1007,15 @@ export class GoLogin {
     if (profileResponse.statusCode === 401) {
       throw new Error('invalid token');
     }
+
+    // save profileResponse.body to file
+    // save to file named profile_local_ + profile_id
+    const profileLocalPath = join(
+      this.profilePath(),
+      `profile_local_${this.profile_id}`,
+    );
+
+    writeFileSync(profileLocalPath, profileResponse.body, 'utf8');
 
     return JSON.parse(profileResponse.body);
   }
@@ -1371,6 +1411,10 @@ export class GoLogin {
     }
 
     console.log('Profile has been uploaded to S3 successfully');
+  }
+
+  profileArgumentLocalPath() {
+    return join(this.tmpdir, `profile_local_${this.profile_id}`);
   }
 
   /**
@@ -1961,9 +2005,15 @@ export class GoLogin {
    * @param {any} options
    * @returns {any}
    */
-  async update(options) {
+  async update(options, local=false) {
     this.profile_id = options.id;
-    const profile = await this.getProfile();
+    let profile = null;
+    if (local) {
+      // this is a local profile, we need to update the profile file
+      profile = await this.getProfile(null, true);
+    } else {
+      profile = await this.getProfile();
+    }
 
     if (options.navigator) {
       Object.keys(options.navigator).map((e) => {
@@ -1978,6 +2028,13 @@ export class GoLogin {
       });
 
     debug('update profile', profile);
+    if (local) {
+      // write to the profile file
+      writeFileSync(this.profileArgumentLocalPath, JSON.stringify(profile));
+
+      return profile;
+    }
+
     const response = await requests.put(
       `https://api.gologin.com/browser/${options.id}`,
       {
@@ -1991,6 +2048,7 @@ export class GoLogin {
     debug('response', JSON.stringify(response.body));
 
     return response.body;
+
   }
 
   /**

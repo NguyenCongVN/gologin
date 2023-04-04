@@ -1,20 +1,16 @@
-/* eslint-disable max-len */
-/**
- * This is a module written in JavaScript that provides utility functions for managing cookies. It exports the following functions:
-
-getDB(filePath, readOnly = true): A function that returns a connection to a SQLite database at the given file path. The connection can be opened in read-only mode if the readOnly argument is true. This function uses the open method from the sqlite package and the Database class from the sqlite3 package.
-getChunckedInsertValues(cookiesArr): A function that takes an array of cookies and returns an array of queries and their corresponding parameters that can be used to insert the cookies into a SQLite database. This function chunks the cookies array into smaller arrays of up to 76 cookies (the maximum number of variables allowed in a SQLite query) and generates a separate query for each chunk. The queries use placeholders for the cookie values to avoid SQL injection vulnerabilities.
-loadCookiesFromFile(filePath): A function that loads cookies from a SQLite database file at the given file path and returns an array of cookie objects. This function queries the cookies table of the database and maps the resulting rows to cookie objects that include properties such as name, value, domain, path, httpOnly, secure, session, and expirationDate.
-unixToLDAP(unixtime): A function that converts a Unix timestamp (in seconds) to a Microsoft LDAP timestamp (in 100-nanosecond intervals since January 1, 1601 UTC).
-ldapToUnix(ldap): A function that converts a Microsoft LDAP timestamp (in 100-nanosecond intervals since January 1, 1601 UTC) to a Unix timestamp (in seconds).
-buildCookieURL(domain, secure, path): A function that takes a cookie's domain, secure flag, and path and returns the URL that the cookie applies to.
-chunk(arr, chunkSize = 1, cache = []): A function that takes an array and returns an array of arrays, where each subarray has up to chunkSize elements. This function is used by getChunckedInsertValues to split the cookies array into smaller arrays.
- */
-
 import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 const { Database, OPEN_READONLY } = sqlite3;
 
+// MAX_SQLITE_VARIABLES is a constant defined in the code with a value of 76. This
+// constant is used in the getChunckedInsertValues function to split the cookiesArr
+// parameter into chunks with a maximum size of 76.
+
+// This is because SQLite has a limit on the number of variables that can be used
+// in a single SQL statement. This limit is 999 by default, but it can be lower
+// depending on the platform and the version of SQLite being used. To avoid hitting
+// this limit, the cookiesArr array is split into smaller chunks of 76 cookies or
+// less, and each chunk is inserted into the database as a separate SQL statement.
 const MAX_SQLITE_VARIABLES = 76;
 
 const SAME_SITE = {
@@ -24,6 +20,10 @@ const SAME_SITE = {
   2: 'strict',
 };
 
+// getDB(filePath, readOnly = true): A function that returns a connection to a
+// SQLite database at the given file path. The connection can be opened in
+// read-only mode if the readOnly argument is true. This function uses the open
+// method from the sqlite package and the Database class from the sqlite3 package.
 export const getDB = (filePath, readOnly = true) => {
   const connectionOpts = {
     filename: filePath,
@@ -35,15 +35,25 @@ export const getDB = (filePath, readOnly = true) => {
   }
 
   return open(connectionOpts);
-}
+};
 
+// getChunckedInsertValues(cookiesArr): A function that takes an array of cookies
+// and returns an array of queries and their corresponding parameters that can be
+// used to insert the cookies into a SQLite database. This function chunks the
+// cookies array into smaller arrays of up to 76 cookies (the maximum number of
+// variables allowed in a SQLite query) and generates a separate query for each
+// chunk. The queries use placeholders for the cookie values to avoid SQL
+// injection vulnerabilities.
 export const getChunckedInsertValues = (cookiesArr) => {
   const todayUnix = Math.floor(new Date().getTime() / 1000.0);
   const chunckedCookiesArr = chunk(cookiesArr, MAX_SQLITE_VARIABLES);
 
   return chunckedCookiesArr.map((cookies) => {
     const queryPlaceholders = cookies.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
-    const query = `insert or replace into cookies (creation_utc, host_key, top_frame_site_key, name, value, encrypted_value, path, expires_utc, is_secure, is_httponly, last_access_utc, has_expires, is_persistent, priority, samesite, source_scheme, source_port, is_same_party, last_update_utc) values ${queryPlaceholders}`;
+    const query = `insert or replace into cookies (creation_utc, host_key, top_frame_site_key,
+       name, value, encrypted_value, path, expires_utc, is_secure, is_httponly, last_access_utc, 
+       has_expires, is_persistent, priority, samesite, source_scheme, source_port, is_same_party, last_update_utc) values ${queryPlaceholders}`;
+
     const queryParams = cookies.flatMap((cookie) => {
       const creationDate = cookie.creationDate ? cookie.creationDate : unixToLDAP(todayUnix);
       let expirationDate = cookie.session ? 0 : unixToLDAP(cookie.expirationDate);
@@ -78,7 +88,8 @@ export const getChunckedInsertValues = (cookiesArr) => {
         0, // last_access_utc
         expirationDate === 0 ? 0 : 1, // has_expires
         isPersistent,
-        1, // default priority value (https://github.com/chromium/chromium/blob/main/net/cookies/cookie_constants.h)
+        1, // default priority value
+        // (https://github.com/chromium/chromium/blob/main/net/cookies/cookie_constants.h)
         samesite,
         sourceScheme,
         sourcePort,
@@ -89,8 +100,13 @@ export const getChunckedInsertValues = (cookiesArr) => {
 
     return [query, queryParams];
   });
-}
+};
 
+// loadCookiesFromFile(filePath): A function that loads cookies from a SQLite
+// database file at the given file path and returns an array of cookie objects.
+// This function queries the cookies table of the database and maps the resulting
+// rows to cookie objects that include properties such as name, value, domain,
+// path, httpOnly, secure, session, and expirationDate.
 export const loadCookiesFromFile = async (filePath) => {
   let db;
   const cookies = [];
@@ -134,8 +150,11 @@ export const loadCookiesFromFile = async (filePath) => {
   }
 
   return cookies;
-}
+};
 
+// unixToLDAP(unixtime): A function that converts a Unix timestamp (in seconds) to
+// a Microsoft LDAP timestamp (in 100-nanosecond intervals since January 1, 1601
+// UTC).
 export const unixToLDAP = (unixtime) => {
   if (unixtime === 0) {
     return unixtime;
@@ -145,8 +164,11 @@ export const unixToLDAP = (unixtime) => {
   const sum = unixtime - win32filetime;
 
   return sum * 1000000;
-}
+};
 
+// ldapToUnix(ldap): A function that converts a Microsoft LDAP timestamp (in
+//   100-nanosecond intervals since January 1, 1601 UTC) to a Unix timestamp (in
+//   seconds).
 export const ldapToUnix = (ldap) => {
   const ldapLength = ldap.toString().length;
   if (ldap === 0 || ldapLength > 18) {
@@ -161,8 +183,10 @@ export const ldapToUnix = (ldap) => {
   const win32filetime = new Date(Date.UTC(1601, 0, 1)).getTime();
 
   return (_ldap / 10000 + win32filetime) / 1000;
-}
+};
 
+// buildCookieURL(domain, secure, path): A function that takes a cookie's domain,
+// secure flag, and path and returns the URL that the cookie applies to
 export const buildCookieURL = (domain, secure, path) => {
   let domainWithoutDot = domain;
   if (domain.startsWith('.')) {
@@ -170,8 +194,12 @@ export const buildCookieURL = (domain, secure, path) => {
   }
 
   return 'http' + (secure ? 's' : '') + '://' + domainWithoutDot + path;
-}
+};
 
+// chunk(arr, chunkSize = 1, cache = []): A function that takes an array and
+// returns an array of arrays, where each subarray has up to chunkSize elements.
+// This function is used by getChunckedInsertValues to split the cookies array
+// into smaller array
 export const chunk = (arr, chunkSize = 1, cache = []) => {
   const tmp = [...arr];
   if (chunkSize <= 0) {
@@ -183,4 +211,4 @@ export const chunk = (arr, chunkSize = 1, cache = []) => {
   }
 
   return cache;
-}
+};
