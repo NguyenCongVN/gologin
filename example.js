@@ -2,8 +2,10 @@ import puppeteer from 'puppeteer-core';
 
 import GoLogin from './src/gologin.js';
 
-const token = 'yU0token';
-const profile_id = 'yU0Pr0f1leiD';
+const token =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NDJhNDgwNDc0NWZkYzlhYTE3OGE0YjciLCJ0eXBlIjoiZGV2Iiwiand0aWQiOiI2NDJhZDI5YTMzODcwMDRmNDNlOTUzYTcifQ.c9yK_stX3hfmqlktKw2bVEN1wp3Ry-i0OqpgB4IGt6M';
+
+const profile_id = '642a4804745fdc921f78a4f6';
 
 (async () => {
   const GL = new GoLogin({

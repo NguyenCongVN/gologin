@@ -1,3 +1,23 @@
+/* eslint-disable max-len */
+/** 
+ * This module exports functions related to archiving and decompressing profiles used by the Chrome browser.
+
+archiveProfile(profileFolder: string, tryAgain: boolean) => Promise<Buffer>: creates an archive of the Chrome profile located at profileFolder. If the tryAgain parameter is set to true, the function will attempt to create the archive again if the first attempt is not valid. The function returns a Promise that resolves to a Buffer containing the archive data.
+
+decompressProfile(zipPath: string, profileFolder: string) => Promise<void>: decompresses an archive located at zipPath into the specified profileFolder.
+
+checkProfileArchiveIsValid(zipObject: AdmZip) => boolean: checks if an archive created by the archiveProfile function is valid. It returns true if the archive contains at least two files named "Preferences" and "Cookies".
+
+flatArray(array: Array<any>) => Array<any>: a helper function that recursively flattens nested arrays.
+
+The module imports the following external dependencies:
+
+AdmZip: a library for working with zip archives.
+promises from the built-in fs module: provides an API for working with the file system that returns Promises.
+path: a built-in module for working with file and directory paths.
+getDirectoriesForArchiver from ./profile-directories-to-remove.js: a function that returns a list of directories to remove from the profile archive.
+ */
+
 import AdmZip from 'adm-zip';
 import { promises as _promises } from 'fs';
 import path from 'path';

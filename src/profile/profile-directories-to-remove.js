@@ -1,3 +1,16 @@
+/* eslint-disable max-len */
+/** 
+ * This is a module that exports two functions and an array of objects.
+
+The array DEFAULT_FOLDER_USELESS_FILE contains a list of objects, where each object describes a folder or file that should be removed when deleting or archiving a browser profile.
+
+The first function getDirectoriesToDeleteForNode(routerSlash) takes a string routerSlash as an optional argument, which represents the router slash used in the folder paths. The function maps over the DEFAULT_FOLDER_USELESS_FILE array, and for each object it adds the corresponding folder/file path to an array. The function returns the array of folders/files to be deleted when cleaning up a browser profile.
+
+The second function getDirectoriesForArchiver() does the same mapping over the DEFAULT_FOLDER_USELESS_FILE array, but instead of returning an array of folder/file paths to be deleted, it returns an array of folder/file paths to be included in the archive of a browser profile.
+
+Both functions return an array of string paths.
+ */
+
 const DEFAULT_FOLDER_USELESS_FILE = [
   {
     name: 'Cache',

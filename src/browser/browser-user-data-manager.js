@@ -1,3 +1,17 @@
+/* eslint-disable max-len */
+/**
+ * 
+ * This is a module written in JavaScript. It exports several functions related to managing browser profiles in the GoLogin service. Here is a brief description of each exported function:
+
+downloadCookies: downloads cookies for a specified GoLogin browser profile.
+uploadCookies: uploads cookies to a specified GoLogin browser profile.
+downloadFonts: downloads and copies specified fonts to a specified GoLogin browser profile.
+composeFonts: composes specified fonts by downloading and copying them to a specified GoLogin browser profile, and optionally copying a font configuration file for Linux.
+copyFontsConfigFile: copies a font configuration file to a specified GoLogin browser profile for Linux.
+setExtPathsAndRemoveDeleted: sets extension paths and removes deleted extensions for a specified GoLogin browser profile.
+setOriginalExtPaths: sets original extension paths for a specified GoLogin browser profile.
+recalculateId: recalculates the ID of an extension for a specified GoLogin browser profile.
+ */
 import { createHash } from 'crypto';
 import { createWriteStream, promises as _promises, rmdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';

@@ -1,3 +1,15 @@
+/* eslint-disable max-len */
+/**
+ * This is a JavaScript module that defines a class BrowserChecker that provides functionality to check for updates to a web browser and download and install updates if necessary. The class has several methods that perform various tasks, such as downloading and extracting browser archives, checking hash sums, and copying files to the appropriate locations. The class uses a number of external dependencies, including child_process, decompress, fs, https, os, path, and readline.
+
+The class constructor takes one optional parameter, skipOrbitaHashChecking, which, if set to true, skips the step of checking the hash sum of the downloaded browser.
+
+The checkBrowser method is used to check for updates to the browser. If there is no current installation of the browser, the method will download the latest version of the browser. If there is a current installation, the method will check the current version against the latest version and prompt the user to update if a new version is available. If the autoUpdateBrowser parameter is set to true, the method will download and install the latest version of the browser without prompting the user.
+
+The downloadBrowser method downloads the latest version of the browser, checks the hash sum of the downloaded file, extracts the browser archive, checks the hash sum of the extracted files, replaces the old browser files with the new ones, and deletes any old archives.
+
+Other methods include downloadBrowserArchive, checkBrowserArchive, extractBrowser, downloadHashFile, checkBrowserSum, replaceBrowser, deleteOldArchives, copyDir, getCurrentVersion, getLatestBrowserVersion, getOrbitaPath, and deleteDir.
+ */
 import { exec as execNonPromise } from 'child_process';
 import decompress from 'decompress';
 import decompressUnzip from 'decompress-unzip';

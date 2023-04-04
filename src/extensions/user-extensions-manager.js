@@ -1,3 +1,18 @@
+/* eslint-disable max-len */
+/**
+ * This is a module written in JavaScript that exports a class called UserExtensionsManager. The class has several methods and properties:
+
+#existedUserExtensions: a private property that holds a list of existing user extensions.
+#API_BASE_URL, #ACCESS_TOKEN, #USER_AGENT, and #TWO_FA_KEY: private properties that hold the API base URL, access token, user agent, and two-factor authentication key respectively.
+set and get methods for each of the above private properties.
+checkLocalUserChromeExtensions: an asynchronous method that takes a list of user chrome extensions and a profile ID and checks if the extensions already exist on the local system. If any of the extensions are not found, they are downloaded and saved to the local system.
+getExtensionsStrToIncludeAsOrbitaParam: an asynchronous method that takes a list of extension IDs and a folder path and returns an array of paths to the extension folders that match the given IDs.
+getExtensionsNameAndImage: an asynchronous method that takes a list of extension IDs and a path to the extensions folder and returns an array of objects that contain the name, extension ID, and icon binary for each extension.
+generateExtensionId: a synchronous method that generates a random extension ID.
+checkFileSizeSync: an asynchronous method that takes a file path and returns the file size in bytes. If the file is a directory, it recursively calculates the size of all files in the directory.
+copyFolder: an asynchronous method that takes a source folder path and a destination folder path and copies all files and folders from the source folder to the destination folder.
+The module imports several modules from the Node.js standard library (fs, path, requestretry) and a module called common from a file called common.js in the same directory. It exports the UserExtensionsManager class as the default export of the module.
+ */
 import { createWriteStream, promises as _promises } from 'fs';
 import { join, sep } from 'path';
 import request from 'requestretry';

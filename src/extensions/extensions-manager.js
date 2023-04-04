@@ -1,3 +1,32 @@
+/* eslint-disable max-len */
+/**
+ * This is a Node.js module that manages extensions in Google Chrome. It provides methods for downloading and extracting extensions, checking for the existence of extensions, updating extensions, and inserting extensions into a database.
+
+The class ExtensionsManager extends UserExtensionsManager, which is not shown in this code snippet.
+
+The module uses the Node.js fs module to interact with the file system, request for making HTTP requests, and decompress for extracting zip files. It also uses some utility functions defined in another file, ../utils/common.js.
+
+The class ExtensionsManager has the following properties:
+
+#existedChromeExtensions: an array of existing Chrome extensions in the Chrome extensions folder.
+#inited: a boolean indicating whether the init method has been called.
+#useLocalExtStorage: a boolean indicating whether to use local extension storage.
+#deleteProfileExtFolders: a boolean indicating whether to delete profile extension folders.
+#useCookiesExt: a boolean indicating whether to use cookies for extensions.
+The class ExtensionsManager has the following methods:
+
+init(): initializes the ExtensionsManager by creating the Chrome extensions and user extensions folders if they don't exist, and deleting any zip files in those folders. Returns a Promise that resolves when initialization is complete.
+checkChromeExtensions(profileExtensions): checks if the Chrome extensions specified in the profileExtensions array are installed, and downloads and extracts any missing extensions. Returns a Promise that resolves with an array of extension IDs to include as Orbita parameters.
+downloadChromeExtensions(idsToDownload): downloads Chrome extensions with the specified IDs. Returns a Promise that resolves with an array of paths to the downloaded extension archives.
+getExtensionsPolicies(): retrieves extension policies from the server and sets the corresponding properties in the ExtensionsManager instance.
+updateExtensions(): updates any out-of-date extensions in the Chrome extensions folder by downloading and extracting the latest versions. Returns a Promise that resolves when all updates are complete.
+checkLocalExtensions(): inserts any installed extensions into a database.
+insertExtensionsToDb(extensionsIds, pathToExtensions): inserts the specified extensions into a database.
+getExtensionsToInstall(extensionsFromPref, extensionsFromDB): returns an array of extensions that need to be installed based on the preferences and the database.
+#getExtensionsToDownload(profileExtensions): returns an array of extension IDs that need to be downloaded based on the specified profile extensions and the extensions that already exist in the Chrome extensions and user extensions folders.
+#existedChromeExtensionsList: returns an array of existing Chrome extensions in the Chrome extensions folder.
+ */
+
 import { createWriteStream, promises as _promises } from 'fs';
 import { join, sep } from 'path';
 import request from 'requestretry';

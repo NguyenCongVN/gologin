@@ -1,3 +1,16 @@
+/* eslint-disable max-len */
+/**
+ * This is a module written in JavaScript that provides utility functions for managing cookies. It exports the following functions:
+
+getDB(filePath, readOnly = true): A function that returns a connection to a SQLite database at the given file path. The connection can be opened in read-only mode if the readOnly argument is true. This function uses the open method from the sqlite package and the Database class from the sqlite3 package.
+getChunckedInsertValues(cookiesArr): A function that takes an array of cookies and returns an array of queries and their corresponding parameters that can be used to insert the cookies into a SQLite database. This function chunks the cookies array into smaller arrays of up to 76 cookies (the maximum number of variables allowed in a SQLite query) and generates a separate query for each chunk. The queries use placeholders for the cookie values to avoid SQL injection vulnerabilities.
+loadCookiesFromFile(filePath): A function that loads cookies from a SQLite database file at the given file path and returns an array of cookie objects. This function queries the cookies table of the database and maps the resulting rows to cookie objects that include properties such as name, value, domain, path, httpOnly, secure, session, and expirationDate.
+unixToLDAP(unixtime): A function that converts a Unix timestamp (in seconds) to a Microsoft LDAP timestamp (in 100-nanosecond intervals since January 1, 1601 UTC).
+ldapToUnix(ldap): A function that converts a Microsoft LDAP timestamp (in 100-nanosecond intervals since January 1, 1601 UTC) to a Unix timestamp (in seconds).
+buildCookieURL(domain, secure, path): A function that takes a cookie's domain, secure flag, and path and returns the URL that the cookie applies to.
+chunk(arr, chunkSize = 1, cache = []): A function that takes an array and returns an array of arrays, where each subarray has up to chunkSize elements. This function is used by getChunckedInsertValues to split the cookies array into smaller arrays.
+ */
+
 import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 const { Database, OPEN_READONLY } = sqlite3;
