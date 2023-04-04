@@ -1,15 +1,11 @@
-/* eslint-disable max-len */
-/**
- * This is a JavaScript module that defines a class BrowserChecker that provides functionality to check for updates to a web browser and download and install updates if necessary. The class has several methods that perform various tasks, such as downloading and extracting browser archives, checking hash sums, and copying files to the appropriate locations. The class uses a number of external dependencies, including child_process, decompress, fs, https, os, path, and readline.
-
-The class constructor takes one optional parameter, skipOrbitaHashChecking, which, if set to true, skips the step of checking the hash sum of the downloaded browser.
-
-The checkBrowser method is used to check for updates to the browser. If there is no current installation of the browser, the method will download the latest version of the browser. If there is a current installation, the method will check the current version against the latest version and prompt the user to update if a new version is available. If the autoUpdateBrowser parameter is set to true, the method will download and install the latest version of the browser without prompting the user.
-
-The downloadBrowser method downloads the latest version of the browser, checks the hash sum of the downloaded file, extracts the browser archive, checks the hash sum of the extracted files, replaces the old browser files with the new ones, and deletes any old archives.
-
-Other methods include downloadBrowserArchive, checkBrowserArchive, extractBrowser, downloadHashFile, checkBrowserSum, replaceBrowser, deleteOldArchives, copyDir, getCurrentVersion, getLatestBrowserVersion, getOrbitaPath, and deleteDir.
- */
+/** This is a JavaScript module that defines a class BrowserChecker that provides
+functionality to check for updates to a web browser and download and install
+updates if necessary. The class has several methods that perform various tasks,
+such as downloading and extracting browser archives, checking hash sums, and
+copying files to the appropriate locations. The class uses a number of external
+dependencies, including child_process, decompress, fs, https, os, path, and
+readline.
+*/
 import { exec as execNonPromise } from 'child_process';
 import decompress from 'decompress';
 import decompressUnzip from 'decompress-unzip';
@@ -55,6 +51,14 @@ export class BrowserChecker {
   #executableFilePath;
   #skipOrbitaHashChecking = false;
 
+  /**
+   *The class constructor takes one optional parameter, skipOrbitaHashChecking,
+which, if set to true, skips the step of checking the hash sum of the
+downloaded
+browser.
+   * @param {*} skipOrbitaHashChecking
+   * @memberof BrowserChecker
+   */
   constructor(skipOrbitaHashChecking) {
     this.#skipOrbitaHashChecking = skipOrbitaHashChecking;
     this.#homedir = homedir();
@@ -71,6 +75,21 @@ export class BrowserChecker {
     // console.log('executableFilePath:', executableFilePath);
   }
 
+  /**
+*
+*The checkBrowser method is used to check for updates to the browser. If there
+is no current installation of the browser, the method will download the latest
+version of the browser. If there is a current installation, the method will
+check the current version against the latest version and prompt the user to
+update if a new version is available. If the autoUpdateBrowser parameter is set
+to true, the method will download and install the latest version of the browser
+without prompting the user.
+
+*
+* @param {boolean} [autoUpdateBrowser=false]
+* @return {*}
+* @memberof BrowserChecker
+*/
   async checkBrowser(autoUpdateBrowser = false) {
     const browserFolderExists = await access(this.#executableFilePath).then(() => true).catch(() => false);
 
@@ -110,6 +129,126 @@ export class BrowserChecker {
     });
   }
 
+  //   Other methods include downloadBrowserArchive, checkBrowserArchive,
+  // extractBrowser, downloadHashFile, checkBrowserSum, replaceBrowser,
+  // deleteOldArchives, copyDir, getCurrentVersion, getLatestBrowserVersion,
+  // getOrbitaPath, and deleteDir.
+
+  async checkBrowserArchive(pathStr) {
+    console.log('Checking Orbita archive');
+    try {
+      await access(pathStr);
+    } catch (e) {
+      throw new Error('Archive has not been found. Please run script again.');
+    }
+  }
+
+  async checkBrowserSum() {
+    if (this.#skipOrbitaHashChecking) {
+      return Promise.resolve();
+    }
+
+    console.log('Orbita hash checking');
+    if (PLATFORM === 'win32') {
+      return Promise.resolve();
+    }
+
+    await this.downloadHashFile();
+    if (PLATFORM === 'darwin') {
+      const calculatedHash = await exec(
+        `mtree -p ${join(this.#browserPath, EXTRACTED_FOLDER, 'Orbita-Browser.app')} < ${join(this.#browserPath, MAC_HASH_FILE)} || echo ${FAIL_SUM_MATCH_MESSAGE}`,
+      );
+
+      const checkedRes = (calculatedHash || '').toString().trim();
+      if (checkedRes.includes(FAIL_SUM_MATCH_MESSAGE)) {
+        throw new Error('Error in sum matching. Please run script again.');
+      }
+
+      return;
+    }
+
+    const hashFileContent = await exec(`cat ${join(this.#browserPath, DEB_HASH_FILE)}`);
+    let serverRes = (hashFileContent.stdout || '').toString().trim();
+    serverRes = serverRes.split(' ')[0];
+
+    const calculateLocalBrowserHash = await exec(
+      `cd ${join(this.#browserPath, EXTRACTED_FOLDER)} && find orbita-browser -type f -print0 | sort -z | \
+            xargs -0 sha256sum > ${this.#browserPath}/calculatedFolderSha.txt`,
+    );
+
+    const localHashContent = await exec(`cd ${this.#browserPath} && sha256sum calculatedFolderSha.txt`);
+    let userRes = (localHashContent.stdout || '').toString().trim();
+    userRes = userRes.split(' ')[0];
+    if (userRes !== serverRes) {
+      throw new Error('Error in sum matching. Please run script again.');
+    }
+  }
+
+  async copyDir(src, dest) {
+    await mkdir(dest);
+    const files = await readdir(src);
+    for (let i = 0; i < files.length; i++) {
+      const current = await lstat(join(src, files[i]));
+      if (current.isDirectory()) {
+        await this.copyDir(join(src, files[i]), join(dest, files[i]));
+      } else if (current.isSymbolicLink()) {
+        const symlinkObj = await readlink(join(src, files[i]));
+        await symlink(symlinkObj, join(dest, files[i]));
+      } else {
+        await copyFile(join(src, files[i]), join(dest, files[i]));
+      }
+    }
+  }
+
+  async deleteDir(path = '') {
+    if (!path) {
+      return;
+    }
+
+    const directoryExists = await access(path).then(() => true).catch(() => false);
+    if (!directoryExists) {
+      return;
+    }
+
+    return rmdir(path, { recursive: true });
+  }
+
+  async deleteOldArchives(deleteCurrentBrowser = false) {
+    if (deleteCurrentBrowser) {
+      return this.deleteDir(join(this.#browserPath));
+    }
+
+    await this.deleteDir(join(this.#browserPath, EXTRACTED_FOLDER));
+
+    return readdir(this.#browserPath)
+      .then((files) => {
+        const promises = [];
+        files.forEach((filename) => {
+          if (filename.match(/(txt|dylib|mtree)/)) {
+            promises.push(unlink(join(this.#browserPath, filename)));
+          }
+        });
+
+        return Promise.all(promises);
+      })
+      .catch(e => {
+        console.log(`Error in deleting old archives. ${e.message}`);
+
+        return Promise.resolve();
+      });
+  }
+
+  /**
+   * The downloadBrowser method downloads the latest version of the browser,
+checks
+the hash sum of the downloaded file, extracts the browser archive, checks the
+hash sum of the extracted files, replaces the old browser files with the new
+ones, and deletes any old archives.
+* @date 4/4/2023 - 7:47:02 PM
+*
+* @async
+* @returns {*}
+*/
   async downloadBrowser() {
     await this.deleteOldArchives(true);
     await mkdir(this.#browserPath, { recursive: true });
@@ -181,32 +320,6 @@ export class BrowserChecker {
     });
   }
 
-  async checkBrowserArchive(pathStr) {
-    console.log('Checking Orbita archive');
-    try {
-      await access(pathStr);
-    } catch (e) {
-      throw new Error('Archive has not been found. Please run script again.');
-    }
-  }
-
-  async extractBrowser() {
-    console.log('Extracting Orbita');
-    await mkdir(join(this.#browserPath, EXTRACTED_FOLDER), { recursive: true });
-    if (PLATFORM === 'win32') {
-      return decompress(join(this.#browserPath, BROWSER_ARCHIVE_NAME), join(this.#browserPath, EXTRACTED_FOLDER),
-        {
-          plugins: [decompressUnzip()],
-          filter: file => !file.path.endsWith('/'),
-        },
-      );
-    }
-
-    return exec(
-      `tar xzf ${join(this.#browserPath, BROWSER_ARCHIVE_NAME)} --directory ${join(this.#browserPath, EXTRACTED_FOLDER)}`,
-    );
-  }
-
   async downloadHashFile() {
     let hashLink = DEB_HASHFILE_LINK;
     let resultPath = join(this.#browserPath, DEB_HASH_FILE);
@@ -240,111 +353,21 @@ export class BrowserChecker {
     return access(hashFilePath);
   }
 
-  async checkBrowserSum() {
-    if (this.#skipOrbitaHashChecking) {
-      return Promise.resolve();
-    }
-
-    console.log('Orbita hash checking');
+  async extractBrowser() {
+    console.log('Extracting Orbita');
+    await mkdir(join(this.#browserPath, EXTRACTED_FOLDER), { recursive: true });
     if (PLATFORM === 'win32') {
-      return Promise.resolve();
-    }
-
-    await this.downloadHashFile();
-    if (PLATFORM === 'darwin') {
-      const calculatedHash = await exec(
-        `mtree -p ${join(this.#browserPath, EXTRACTED_FOLDER, 'Orbita-Browser.app')} < ${join(this.#browserPath, MAC_HASH_FILE)} || echo ${FAIL_SUM_MATCH_MESSAGE}`,
+      return decompress(join(this.#browserPath, BROWSER_ARCHIVE_NAME), join(this.#browserPath, EXTRACTED_FOLDER),
+        {
+          plugins: [decompressUnzip()],
+          filter: file => !file.path.endsWith('/'),
+        },
       );
-
-      const checkedRes = (calculatedHash || '').toString().trim();
-      if (checkedRes.includes(FAIL_SUM_MATCH_MESSAGE)) {
-        throw new Error('Error in sum matching. Please run script again.');
-      }
-
-      return;
     }
 
-    const hashFileContent = await exec(`cat ${join(this.#browserPath, DEB_HASH_FILE)}`);
-    let serverRes = (hashFileContent.stdout || '').toString().trim();
-    serverRes = serverRes.split(' ')[0];
-
-    const calculateLocalBrowserHash = await exec(
-      `cd ${join(this.#browserPath, EXTRACTED_FOLDER)} && find orbita-browser -type f -print0 | sort -z | \
-            xargs -0 sha256sum > ${this.#browserPath}/calculatedFolderSha.txt`,
+    return exec(
+      `tar xzf ${join(this.#browserPath, BROWSER_ARCHIVE_NAME)} --directory ${join(this.#browserPath, EXTRACTED_FOLDER)}`,
     );
-
-    const localHashContent = await exec(`cd ${this.#browserPath} && sha256sum calculatedFolderSha.txt`);
-    let userRes = (localHashContent.stdout || '').toString().trim();
-    userRes = userRes.split(' ')[0];
-    if (userRes !== serverRes) {
-      throw new Error('Error in sum matching. Please run script again.');
-    }
-  }
-
-  async replaceBrowser() {
-    console.log('Copy Orbita to target path');
-    if (PLATFORM === 'darwin') {
-      await this.deleteDir(join(this.#browserPath, 'Orbita-Browser.app'));
-
-      const files = await readdir(join(this.#browserPath, EXTRACTED_FOLDER));
-      const promises = [];
-      files.forEach((filename) => {
-        if (filename.match(/.*\.dylib$/)) {
-          promises.push(copyFile(join(this.#browserPath, EXTRACTED_FOLDER, filename), join(this.#browserPath, filename)));
-        }
-      });
-
-      return Promise.all(promises);
-    }
-
-    const targetBrowserPath = join(this.#browserPath, 'orbita-browser');
-    await this.deleteDir(targetBrowserPath);
-
-    await this.copyDir(
-      join(this.#browserPath, EXTRACTED_FOLDER, 'orbita-browser'),
-      targetBrowserPath,
-    );
-  }
-
-  async deleteOldArchives(deleteCurrentBrowser = false) {
-    if (deleteCurrentBrowser) {
-      return this.deleteDir(join(this.#browserPath));
-    }
-
-    await this.deleteDir(join(this.#browserPath, EXTRACTED_FOLDER));
-
-    return readdir(this.#browserPath)
-      .then((files) => {
-        const promises = [];
-        files.forEach((filename) => {
-          if (filename.match(/(txt|dylib|mtree)/)) {
-            promises.push(unlink(join(this.#browserPath, filename)));
-          }
-        });
-
-        return Promise.all(promises);
-      })
-      .catch(e => {
-        console.log(`Error in deleting old archives. ${e.message}`);
-
-        return Promise.resolve();
-      });
-  }
-
-  async copyDir(src, dest) {
-    await mkdir(dest);
-    const files = await readdir(src);
-    for (let i = 0; i < files.length; i++) {
-      const current = await lstat(join(src, files[i]));
-      if (current.isDirectory()) {
-        await this.copyDir(join(src, files[i]), join(dest, files[i]));
-      } else if (current.isSymbolicLink()) {
-        const symlinkObj = await readlink(join(src, files[i]));
-        await symlink(symlinkObj, join(dest, files[i]));
-      } else {
-        await copyFile(join(src, files[i]), join(dest, files[i]));
-      }
-    }
   }
 
   getCurrentVersion() {
@@ -388,17 +411,29 @@ export class BrowserChecker {
     return this.#executableFilePath;
   }
 
-  async deleteDir(path = '') {
-    if (!path) {
-      return;
+  async replaceBrowser() {
+    console.log('Copy Orbita to target path');
+    if (PLATFORM === 'darwin') {
+      await this.deleteDir(join(this.#browserPath, 'Orbita-Browser.app'));
+
+      const files = await readdir(join(this.#browserPath, EXTRACTED_FOLDER));
+      const promises = [];
+      files.forEach((filename) => {
+        if (filename.match(/.*\.dylib$/)) {
+          promises.push(copyFile(join(this.#browserPath, EXTRACTED_FOLDER, filename), join(this.#browserPath, filename)));
+        }
+      });
+
+      return Promise.all(promises);
     }
 
-    const directoryExists = await access(path).then(() => true).catch(() => false);
-    if (!directoryExists) {
-      return;
-    }
+    const targetBrowserPath = join(this.#browserPath, 'orbita-browser');
+    await this.deleteDir(targetBrowserPath);
 
-    return rmdir(path, { recursive: true });
+    await this.copyDir(
+      join(this.#browserPath, EXTRACTED_FOLDER, 'orbita-browser'),
+      targetBrowserPath,
+    );
   }
 }
 

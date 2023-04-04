@@ -116,6 +116,11 @@ export class GoLogin {
       'Network',
       'Cookies',
     );
+
+    // this.profile_zip_path is a variable that likely holds a file path to a ZIP file
+    // containing a GoLogin browser profile. The code that uses this variable could be
+    // performing operations on the file, such as extracting the contents of the ZIP
+    // archive to a directory or uploading the file to a remote server.
     this.profile_zip_path = join(this.tmpdir, `gologin_${this.profile_id}.zip`);
     debug('INIT GOLOGIN', this.profile_id);
   }
@@ -193,21 +198,27 @@ export class GoLogin {
 
     return false;
   }
-  /**
-   * The clearProfileFiles() function is an asynchronous function that deletes
-   * all files associated with the current profile stored in the temporary
-   * directory. It uses the rimraf package to recursively delete the profile
-   * directory and the uploaded cookie zip file associated with the profile. The
-   * function takes no arguments and returns nothing.
-   *
-   * @memberof GoLogin
-   */
+
+  /** The clearProfileFiles() function is an asynchronous function that deletes
+* all files associated with the current profile stored in the temporary
+* directory. It uses the rimraf package to recursively delete the profile
+* directory and the uploaded cookie zip file associated with the profile. The
+* function takes no arguments and returns nothing.
+*
+* @memberof GoLogin
+*/
   async clearProfileFiles() {
-    await rimraf(
+    // check that profile_id is set
+    if (!this.profile_id) {
+      throw new Error('profile_id not set');
+    }
+
+    rimraf(
       join(this.tmpdir, `gologin_profile_${this.profile_id}`),
       () => null,
     );
-    await rimraf(
+
+    rimraf(
       join(this.tmpdir, `gologin_${this.profile_id}_upload.zip`),
       () => null,
     );
@@ -305,36 +316,36 @@ export class GoLogin {
   }
 
   /**
-   * The create method creates a new browser profile using the specified
-   * options.
-   *
-   * This is an asynchronous function called create, which creates a new browser
-   * profile on the GoLogin service. It takes an options object as its argument
-   * which includes information about the profile to be created, such as the
-   * name of the profile, the operating system, proxy settings, and so on. The
-   * function starts by getting a random fingerprint using the
-   * getRandomFingerprint function with the given options. If the response from
-   * the getRandomFingerprint function has a statusCode of 500, the function
-   * throws an error stating that there is no valid random fingerprint for the
-   * specified operating system. If the statusCode is 401, an error is thrown
-   * indicating that the token is invalid.
-   *
-   * The function then processes the fingerprint data by updating the device
-   * memory size, setting WebGLMetadata mode to 'mask' or 'off', and updating
-   * the webRTC mode to 'alerted'. It then creates a new JSON object that
-   * includes the processed fingerprint data, browserType, profile name, notes,
-   * fonts, and webRTC settings. The options object is then merged into this
-   * JSON object, and if the userAgent in the options.navigator object is set to
-   * 'random', the original user agent value is restored.
-   *
-   * Finally, the function makes a POST request to the GoLogin API with the JSON
-   * object as its data. The response from the API is checked for errors, and if
-   * there are none, the ID of the created profile is returned.
-   *
-   * @memberof GoLogin
-   * @param {any} options
-   * @returns {any}
-   */
+* The create method creates a new browser profile using the specified
+* options.
+*
+* This is an asynchronous function called create, which creates a new browser
+* profile on the GoLogin service. It takes an options object as its argument
+* which includes information about the profile to be created, such as the
+* name of the profile, the operating system, proxy settings, and so on. The
+* function starts by getting a random fingerprint using the
+* getRandomFingerprint function with the given options. If the response from
+* the getRandomFingerprint function has a statusCode of 500, the function
+* throws an error stating that there is no valid random fingerprint for the
+* specified operating system. If the statusCode is 401, an error is thrown
+* indicating that the token is invalid.
+*
+* The function then processes the fingerprint data by updating the device
+* memory size, setting WebGLMetadata mode to 'mask' or 'off', and updating
+* the webRTC mode to 'alerted'. It then creates a new JSON object that
+* includes the processed fingerprint data, browserType, profile name, notes,
+* fonts, and webRTC settings. The options object is then merged into this
+* JSON object, and if the userAgent in the options.navigator object is set to
+* 'random', the original user agent value is restored.
+*
+* Finally, the function makes a POST request to the GoLogin API with the JSON
+* object as its data. The response from the API is checked for errors, and if
+* there are none, the ID of the created profile is returned.
+*
+* @memberof GoLogin
+* @param {any} options
+* @returns {any}
+*/
   async create(options) {
     debug('createProfile', options);
 
@@ -444,30 +455,29 @@ export class GoLogin {
     debug('createBrowserExtension done');
   }
 
-  /**
-   * The createStartup function is an asynchronous function that creates a new
-   * startup profile for a web browser. The function takes a boolean parameter
-   * local, which determines whether to use a local profile or download a
-   * profile from an S3 bucket. The function starts by creating a temporary
-   * directory and obtaining various information about the user's system,
-   * including their screen resolution and language settings. The function then
-   * checks whether a profile zip file exists and downloads it from S3 if it
-   * doesn't. It then extracts the profile zip file to the temporary directory
-   * and updates the preferences file with various settings, including the
-   * user's geolocation, timezone, and webGL metadata. The function also checks
-   * for the presence of any installed Chrome extensions and updates their paths
-   * in the preferences file if necessary. Finally, the function returns the
-   * path to the newly created profile.
-   *
-   * @memberof GoLogin
-   * @param {boolean} [local=false] Default is `false`
-   * @returns {any}
-   */
+  /** The createStartup function is an asynchronous function that creates a new
+* startup profile for a web browser. The function takes a boolean parameter
+* local, which determines whether to use a local profile or download a
+* profile from an S3 bucket. The function starts by creating a temporary
+* directory and obtaining various information about the user's system,
+* including their screen resolution and language settings. The function then
+* checks whether a profile zip file exists and downloads it from S3 if it
+* doesn't. It then extracts the profile zip file to the temporary directory
+* and updates the preferences file with various settings, including the
+* user's geolocation, timezone, and webGL metadata. The function also checks
+* for the presence of any installed Chrome extensions and updates their paths
+* in the preferences file if necessary. Finally, the function returns the
+* path to the newly created profile.
+*
+* @memberof GoLogin
+* @param {boolean} [local=false] Default is `false`
+* @returns {any}
+*/
   async createStartup(local = false) {
     const profilePath = join(this.tmpdir, `gologin_profile_${this.profile_id}`);
     let profile;
     let profile_folder;
-    await rimraf(profilePath, () => null);
+    rimraf(profilePath, () => null);
     debug('-', profilePath, 'dropped');
     profile = await this.getProfile();
     const { navigator = {}, fonts, os: profileOs } = profile;
@@ -791,16 +801,15 @@ export class GoLogin {
     return profilePath;
   }
 
-  /**
-   * The createStartupAndSpawnBrowser method creates a startup script for the
-   * browser and then starts the browser using the spawnBrowser method. The
-   * clearProfileFiles method deletes the files associated with a browser
-   * profile. The stopAndCommit method stops the browser and commits the profile
-   * data to the GoLogin service.
-   *
-   * @memberof GoLogin
-   * @returns {any}
-   */
+  /** The createStartupAndSpawnBrowser method creates a startup script for the
+* browser and then starts the browser using the spawnBrowser method. The
+* clearProfileFiles method deletes the files associated with a browser
+* profile. The stopAndCommit method stops the browser and commits the profile
+* data to the GoLogin service.
+*
+* @memberof GoLogin
+* @returns {any}
+*/
   async createStartupAndSpawnBrowser() {
     await this.createStartup();
 
@@ -959,29 +968,25 @@ export class GoLogin {
     const id = profile_id || this.profile_id;
     debug('getProfile', this.access_token, id);
 
-    try {
+    // if local, get profile from file
+    if (local) {
+      // read profile from file
+      // read from file named profile_local_ + profile_id
 
-      // if local, get profile from file
-      if (local) {
-        // read profile from file
-        // read from file named profile_local_ + profile_id
-
-        // check that file is exists
-        if (!existsSync(this.profileArgumentLocalPath)) {
-          throw new Error('Profile not found');
-        }
-
-        const profile = readFileSync(
-          this.profileArgumentLocalPath,
-          'utf8',
-        );
-
-        return JSON.parse(profile);
+      // check that file is exists
+      if (!existsSync(this.profileArgumentLocalPath)) {
+        throw new Error('Profile not found');
       }
-    } catch (e) {
-      debug('file local profile not found! Try to get profile from server');
+
+      const profile = readFileSync(
+        this.profileArgumentLocalPath,
+        'utf8',
+      );
+
+      return JSON.parse(profile);
     }
 
+    // if not local, get profile from server
     const profileResponse = await requests.get(`${API_URL}/browser/${id}`, {
       headers: {
         Authorization: `Bearer ${this.access_token}`,
@@ -1009,15 +1014,10 @@ export class GoLogin {
     }
 
     // save profileResponse.body to file
-    // save to file named profile_local_ + profile_id
-    const profileLocalPath = join(
-      this.profilePath(),
-      `profile_local_${this.profile_id}`,
-    );
-
-    writeFileSync(profileLocalPath, profileResponse.body, 'utf8');
+    writeFileSync(this.profileArgumentLocalPath(), profileResponse.body, 'utf8');
 
     return JSON.parse(profileResponse.body);
+
   }
 
   /**
@@ -1029,6 +1029,34 @@ export class GoLogin {
    */
   async getProfileDataToUpdate() {
     const zipPath = join(this.tmpdir, `gologin_${this.profile_id}_upload.zip`);
+    const zipExists = await access(zipPath)
+      .then(() => true)
+      .catch(() => false);
+
+    if (zipExists) {
+      await unlink(zipPath);
+    }
+
+    await this.sanitizeProfile();
+    debug('profile sanitized');
+
+    const profilePath = this.profilePath();
+    const fileBuff = await archiveProfile(profilePath);
+
+    debug('PROFILE ZIP CREATED', profilePath, zipPath);
+
+    return fileBuff;
+  }
+
+  /**
+   * The getProfileDataZip method retrieves a zip file containing the
+   * browser profile data
+   *
+   * @memberof GoLogin
+   * @returns {any}
+   */
+  async getProfileDataZip() {
+    const zipPath = join(this.tmpdir, `gologin_${this.profile_id}.zip`);
     const zipExists = await access(zipPath)
       .then(() => true)
       .catch(() => false);
@@ -1207,14 +1235,13 @@ export class GoLogin {
     return this._tz.timezone;
   }
 
-  /**
-   * The getTimezoneWithSocks function is a helper function for getTimeZone that
-   * handles API requests through a socks proxy.
-   *
-   * @memberof GoLogin
-   * @param {any} params
-   * @returns {any}
-   */
+  /** The getTimezoneWithSocks function is a helper function for getTimeZone that
+* handles API requests through a socks proxy.
+*
+* @memberof GoLogin
+* @param {any} params
+* @returns {any}
+*/
   async getTimezoneWithSocks(params) {
     const { mode = 'http', host, port, username = '', password = '' } = params;
     let body;
@@ -1413,6 +1440,12 @@ export class GoLogin {
     console.log('Profile has been uploaded to S3 successfully');
   }
 
+  /** The profileArgumentLocalPath function returns the path to the temporary
+directory where the profile arguments file is stored.
+*
+* @memberof GoLogin
+* @returns {any}
+*/
   profileArgumentLocalPath() {
     return join(this.tmpdir, `profile_local_${this.profile_id}`);
   }
@@ -1594,24 +1627,23 @@ export class GoLogin {
     return params;
   }
 
-  /**
-   * The spawnBrowser function is responsible for launching a new instance of
-   * the Chrome browser with the given configuration parameters. It first sets
-   * up the environment variables and necessary parameters for the browser
-   * launch, such as the profile path, proxy server details, time zone, etc. It
-   * then creates an array of parameters to pass to the Chrome binary based on
-   * the configuration and the environment variables. If necessary, it also
-   * loads any additional extensions that are specified in the configuration. If
-   * the vnc_port option is set, it will run the run.sh script, which creates a
-   * VNC connection for the Chrome browser. Otherwise, it will directly spawn a
-   * new child process for the Chrome browser using execFile function. If the
-   * waitWebsocket option is set, it will wait for the WebSocket URL of the
-   * browser to become available and return it. Otherwise, it will return an
-   * empty string.
-   *
-   * @memberof GoLogin
-   * @returns {any}
-   */
+  /** The spawnBrowser function is responsible for launching a new instance of
+* the Chrome browser with the given configuration parameters. It first sets
+* up the environment variables and necessary parameters for the browser
+* launch, such as the profile path, proxy server details, time zone, etc. It
+* then creates an array of parameters to pass to the Chrome binary based on
+* the configuration and the environment variables. If necessary, it also
+* loads any additional extensions that are specified in the configuration. If
+* the vnc_port option is set, it will run the run.sh script, which creates a
+* VNC connection for the Chrome browser. Otherwise, it will directly spawn a
+* new child process for the Chrome browser using execFile function. If the
+* waitWebsocket option is set, it will wait for the WebSocket URL of the
+* browser to become available and return it. Otherwise, it will return an
+* empty string.
+*
+* @memberof GoLogin
+* @returns {any}
+*/
   async spawnBrowser() {
     let { remote_debugging_port } = this;
     if (!remote_debugging_port) {
@@ -1807,14 +1839,14 @@ export class GoLogin {
     return { status: 'success', wsUrl };
   }
 
-  /**
-   * Starts a remote browser instance with the profile and returns the WebSocket
-   * URL.
-   *
-   * @memberof GoLogin
-   * @param {number} [delay_ms=10000] Default is `10000`
-   * @returns {any}
-   */
+  /*
+* Starts a remote browser instance with the profile and returns the WebSocket
+* URL.
+*
+* @memberof GoLogin
+* @param {number} [delay_ms=10000] Default is `10000`
+* @returns {any}
+*/
   async startRemote(delay_ms = 10000) {
     debug(`startRemote ${this.profile_id}`);
 
@@ -1883,25 +1915,24 @@ export class GoLogin {
     await this.stopAndCommit({ posting: true }, false);
   }
 
-  /**
-   * This is an asynchronous method stopAndCommit that stops the current browser
-   * profile and commits any changes made to the profile. It takes two
-   * parameters, options and local. If is_posting is true, which is determined
-   * by the options object passed in, then the profile is committed. Otherwise,
-   * the profile is only sanitized. The method sets is_stopping to true to
-   * indicate that the stopping process has begun, and then sets it to false
-   * when the profile has been cleared. It waits for 3 seconds before clearing
-   * the profile files, then clears them using the clearProfileFiles method. If
-   * local is true, then the profile archive is not deleted. Otherwise, the
-   * profile archive is deleted from the temporary directory using rimraf.
-   * Finally, the method logs a debug message indicating that the profile has
-   * been stopped and cleared.
-   *
-   * @memberof GoLogin
-   * @param {any} options
-   * @param {boolean} [local=false] Default is `false`
-   * @returns {any}
-   */
+  /** This is an asynchronous method stopAndCommit that stops the current browser
+* profile and commits any changes made to the profile. It takes two
+* parameters, options and local. If is_posting is true, which is determined
+* by the options object passed in, then the profile is committed. Otherwise,
+* the profile is only sanitized. The method sets is_stopping to true to
+* indicate that the stopping process has begun, and then sets it to false
+* when the profile has been cleared. It waits for 3 seconds before clearing
+* the profile files, then clears them using the clearProfileFiles method. If
+* local is true, then the profile archive is not deleted. Otherwise, the
+* profile archive is deleted from the temporary directory using rimraf.
+* Finally, the method logs a debug message indicating that the profile has
+* been stopped and cleared.
+*
+* @memberof GoLogin
+* @param {any} options
+* @param {boolean} [local=false] Default is `false`
+* @returns {any}
+*/
   async stopAndCommit(options, local = false) {
     if (this.is_stopping) {
       return true;
@@ -1919,6 +1950,14 @@ export class GoLogin {
     this.is_stopping = true;
     await this.sanitizeProfile();
 
+    // compress profile
+    const archiveBuffer = await this.getProfileDataZip();
+    // create profile archive in temp dir
+    writeFileSync(
+      join(this.tmpdir, `gologin_${this.profile_id}.zip`),
+      archiveBuffer,
+    );
+
     if (is_posting) {
       await this.commitProfile();
     }
@@ -1929,7 +1968,7 @@ export class GoLogin {
     await this.clearProfileFiles();
 
     if (!local) {
-      await rimraf(
+      rimraf(
         join(this.tmpdir, `gologin_${this.profile_id}.zip`),
         () => null,
       );
@@ -1957,7 +1996,7 @@ export class GoLogin {
       throw new Error('Empty GoLogin port');
     }
 
-    const ls = await spawn('fuser', ['-k TERM', `-n tcp ${this.port}`], {
+    spawn('fuser', ['-k TERM', `-n tcp ${this.port}`], {
       shell: true,
     });
 
@@ -1998,13 +2037,35 @@ export class GoLogin {
     }
   }
 
-  /**
-   * Updates the profile with the given options.
-   *
-   * @memberof GoLogin
-   * @param {any} options
-   * @returns {any}
-   */
+  /** This is an async update function that updates a GoLogin browser profile with
+the provided options. It takes two parameters, options and local.
+
+If local is set to true, it means that the profile is a local profile, and the
+function reads the profile file using the getProfile method with null as the
+parameter to get the path of the profile. Otherwise, the function gets the
+profile from the GoLogin API using the getProfile method with no parameters.
+
+The function then updates the profile with the provided options. If the
+navigator field is included in the options, it updates the navigator property
+of
+the profile. Otherwise, it updates all other properties except navigator.
+
+After updating the profile, the function writes the updated profile to the
+profile file if it's a local profile by calling the writeFileSync method with
+the profileArgumentLocalPath variable as the file path and the updated profile
+as the data to write.
+
+If the profile is not a local profile, the function sends a PUT request to the
+GoLogin API with the updated profile JSON in the request body and the user's
+authorization token in the request headers.
+
+The function returns the updated profile if it's a local profile or the
+response
+body from the GoLogin API if it's not a local profile
+*
+* @memberof GoLogin
+* @param {any} options
+* @returns {any}*/
   async update(options, local=false) {
     this.profile_id = options.id;
     let profile = null;
@@ -2051,12 +2112,23 @@ export class GoLogin {
 
   }
 
-  /**
-   * Uploads the cookies for the profile from a file to the GoLogin server.
-   *
-   * @memberof GoLogin
-   * @returns {any}
-   */
+  /** This uploadProfileCookiesToServer is an asynchronous method that uploads
+cookies from a local file to the GoLogin server for a specific profile.
+
+First, it loads the cookies from the local file using the loadCookiesFromFile
+function, and if there are no cookies, it returns without doing anything.
+Otherwise, it sends a POST request to the GoLogin API using the postCookies
+function, passing the profile ID and the cookies as JSON in the request body.
+The postCookies function is not shown here, but it likely uses the requests
+library to make the HTTP request to the GoLogin API.
+
+The purpose of this method is likely to synchronize cookies between the local
+machine and the GoLogin server so that the user can use the same cookies when
+accessing the profile from different devices or locations.
+*
+* @memberof GoLogin
+* @returns {any}
+*/
   async uploadProfileCookiesToServer() {
     const cookies = await loadCookiesFromFile(this.cookiesFilePath);
     if (!cookies.length) {
@@ -2109,12 +2181,37 @@ export class GoLogin {
     return wsUrl;
   }
 
-  /**
-   * Writes the cookies for the profile to a file.
-   *
-   * @memberof GoLogin
-   * @returns {any}
-   */
+  /** This is an async method called writeCookiesToFile() that writes cookies for a
+given profile to a SQLite database file located at this.cookiesFilePath. Here's
+what it does:
+
+First, it gets the cookies for the current profile using the getCookies()
+method
+and stores them in a variable called cookies.
+If there are no cookies in the cookies array, the method returns early and does
+not write anything to the database.
+The method then maps over the cookies array and creates a new array called
+resultCookies, which is a copy of the cookies array with the value property of
+each cookie converted to a Buffer object.
+The method then attempts to get a connection to the SQLite database file using
+the getDB() helper function and passing in this.cookiesFilePath as the path to
+the database file.
+If a connection to the database is established, the method gets an array of
+chunks of insert values using the getChunckedInsertValues() helper function,
+passing in the resultCookies array as the data to be inserted.
+The method then loops over each chunk of insert values and creates a prepared
+statement using the prepare() method of the SQLite database connection object.
+For each prepared statement, the method runs the query using the run() method
+and passing in the corresponding query parameters from the queryParams array
+returned by getChunckedInsertValues().
+Finally, the method closes the database connection using the close() method of
+the SQLite database connection object.
+The end result is that all of the cookies for the current profile are written
+to
+a SQLite database file at this.cookiesFilePath.
+*
+* @memberof GoLogin
+* @returns {any}*/
   async writeCookiesToFile() {
     const cookies = await this.getCookies(this.profile_id);
     if (!cookies.length) {

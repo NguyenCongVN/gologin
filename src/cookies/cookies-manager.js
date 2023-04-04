@@ -2,17 +2,43 @@ import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 const { Database, OPEN_READONLY } = sqlite3;
 
-// MAX_SQLITE_VARIABLES is a constant defined in the code with a value of 76. This
-// constant is used in the getChunckedInsertValues function to split the cookiesArr
-// parameter into chunks with a maximum size of 76.
-
-// This is because SQLite has a limit on the number of variables that can be used
-// in a single SQL statement. This limit is 999 by default, but it can be lower
-// depending on the platform and the version of SQLite being used. To avoid hitting
-// this limit, the cookiesArr array is split into smaller chunks of 76 cookies or
-// less, and each chunk is inserted into the database as a separate SQL statement.
+/**
+MAX_SQLITE_VARIABLES is a constant defined in the code with a value of
+76. This constant is used in the getChunckedInsertValues function to split the
+cookiesArr parameter into chunks with a maximum size of 76.
+This is because SQLite has a limit on the number of variables that can
+be used in a single SQL statement. This limit is 999 by default, but it
+can be lower depending on the platform and the version of SQLite being used. To
+avoid hitting this limit, the cookiesArr array is split into smaller chunks of
+76 cookies or less, and each chunk is inserted into the database as a
+separate SQL statement.
+**/
 const MAX_SQLITE_VARIABLES = 76;
 
+/**
+* SameSite is a cookie attribute that can be set to one of three values:
+"Strict", "Lax", or "None".
+
+It is used to control how cookies are sent with cross-site requests. The
+attribute is added to a cookie by a web server to instruct a browser
+whether to include the cookie in cross-site requests.
+
+If SameSite attribute is set to "Strict", then the cookie is not sent
+with any cross-site requests, i.e. the cookie will only be sent with
+requests originating from the same site that set the cookie.
+
+If SameSite attribute is set to "Lax", then the cookie is only sent with
+"safe" cross-site requests, such as those initiated by clicking on a
+link.
+
+If SameSite attribute is set to "None", then the cookie will be sent
+with all cross-site requests, but only if the cookie is marked as secure
+(i.e., sent over HTTPS).
+
+The SameSite attribute can help prevent certain types of cross-site
+request forgery (CSRF) attacks, which can occur when a website's cookies
+are sent to another site without the user's knowledge or consent.
+ **/
 const SAME_SITE = {
   '-1': 'unspecified',
   0: 'no_restriction',
@@ -20,10 +46,15 @@ const SAME_SITE = {
   2: 'strict',
 };
 
-// getDB(filePath, readOnly = true): A function that returns a connection to a
-// SQLite database at the given file path. The connection can be opened in
-// read-only mode if the readOnly argument is true. This function uses the open
-// method from the sqlite package and the Database class from the sqlite3 package.
+/**
+ * getDB(filePath, readOnly = true): A function that returns a connection to a
+SQLite database at the given file path. The connection can be opened in
+read-only mode if the readOnly argument is true. This function uses the open
+method from the sqlite package and the Database class from the sqlite3 package.
+ * @param {*} filePath
+ * @param {*} readOnly
+ * @returns
+ */
 export const getDB = (filePath, readOnly = true) => {
   const connectionOpts = {
     filename: filePath,
@@ -37,13 +68,15 @@ export const getDB = (filePath, readOnly = true) => {
   return open(connectionOpts);
 };
 
-// getChunckedInsertValues(cookiesArr): A function that takes an array of cookies
-// and returns an array of queries and their corresponding parameters that can be
-// used to insert the cookies into a SQLite database. This function chunks the
-// cookies array into smaller arrays of up to 76 cookies (the maximum number of
-// variables allowed in a SQLite query) and generates a separate query for each
-// chunk. The queries use placeholders for the cookie values to avoid SQL
-// injection vulnerabilities.
+/** getChunckedInsertValues(cookiesArr): A function that takes an array of
+cookies and returns an array of queries and their corresponding
+parameters that can be used to insert the cookies into a SQLite
+database. This function chunks the cookies array into smaller arrays of
+up to 76 cookies (the maximum number of variables allowed in a SQLite
+query) and generates a separate query for each chunk. The queries use
+placeholders for the cookie values to avoid SQL injection vulnerabilities.
+* @param {*} cookiesArr
+ **/
 export const getChunckedInsertValues = (cookiesArr) => {
   const todayUnix = Math.floor(new Date().getTime() / 1000.0);
   const chunckedCookiesArr = chunk(cookiesArr, MAX_SQLITE_VARIABLES);
@@ -196,10 +229,16 @@ export const buildCookieURL = (domain, secure, path) => {
   return 'http' + (secure ? 's' : '') + '://' + domainWithoutDot + path;
 };
 
-// chunk(arr, chunkSize = 1, cache = []): A function that takes an array and
-// returns an array of arrays, where each subarray has up to chunkSize elements.
-// This function is used by getChunckedInsertValues to split the cookies array
-// into smaller array
+/**
+ * chunk(arr, chunkSize = 1, cache = []): A function that takes an array and
+returns an array of arrays, where each subarray has up to chunkSize elements.
+This function is used by getChunckedInsertValues to split the cookies array
+into smaller array
+ * @param {*} arr
+ * @param {*} chunkSize
+ * @param {*} cache
+ * @returns
+ */
 export const chunk = (arr, chunkSize = 1, cache = []) => {
   const tmp = [...arr];
   if (chunkSize <= 0) {

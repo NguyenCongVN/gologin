@@ -1,28 +1,24 @@
-/* eslint-disable max-len */
 /**
- * 
- * This is a module written in JavaScript. It exports several functions related to managing browser profiles in the GoLogin service. Here is a brief description of each exported function:
+* This is a module written in JavaScript. It exports several functions related
+to managing browser profiles in the GoLogin service. Here is a brief
+description of each exported function:
 
-downloadCookies: downloads cookies for a specified GoLogin browser profile.
-uploadCookies: uploads cookies to a specified GoLogin browser profile.
-downloadFonts: downloads and copies specified fonts to a specified GoLogin browser profile.
-composeFonts: composes specified fonts by downloading and copying them to a specified GoLogin browser profile, and optionally copying a font configuration file for Linux.
-copyFontsConfigFile: copies a font configuration file to a specified GoLogin browser profile for Linux.
-setExtPathsAndRemoveDeleted: sets extension paths and removes deleted extensions for a specified GoLogin browser profile.
-setOriginalExtPaths: sets original extension paths for a specified GoLogin browser profile.
-recalculateId: recalculates the ID of an extension for a specified GoLogin browser profile.
- */
+*/
 import { createHash } from 'crypto';
 import { createWriteStream, promises as _promises, rmdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
-import { join, resolve, sep, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { dirname,join, resolve, sep } from 'path';
 import requestretry from 'requestretry';
+import { fileURLToPath } from 'url';
 
 import { fontsCollection } from '../../fonts.js';
 
 const { access, readFile, writeFile, mkdir, readdir, copyFile, rename } = _promises;
 
+// a constant named __filename which represents the absolute path of the current
+// module's file. The value of __filename is obtained by calling the fileURLToPath
+// function provided by the built-in url module, passing the import.meta.url
+// property as its argument
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -37,6 +33,17 @@ const GOLOGIN_BASE_FOLDER_NAME = '.gologin';
 const GOLOGIN_TEST_FOLDER_NAME = '.gologin_test';
 const osPlatform = process.platform;
 
+/**
+ * downloadCookies: downloads cookies for a specified GoLogin browser profile.
+uploadCookies: uploads cookies to a specified GoLogin browser profile.
+downloadFonts: downloads and copies specified fonts to a specified GoLogin
+browser profile.
+* @date 4/4/2023 - 7:48:34 PM
+*
+* @param {{ profileId: any; ACCESS_TOKEN: any; API_BASE_URL: any; }} {
+profileId, ACCESS_TOKEN, API_BASE_URL }
+* @returns {*}
+*/
 export const downloadCookies = ({ profileId, ACCESS_TOKEN, API_BASE_URL }) =>
   requestretry.get(`${API_BASE_URL}/browser/${profileId}/cookies`, {
     headers: {
@@ -98,6 +105,15 @@ export const downloadFonts = async (fontsList = [], profilePath) => {
   await Promise.all(promises);
 };
 
+/**
+ * composeFonts: composes specified fonts by downloading and copying them to a
+specified GoLogin browser profile, and optionally copying a font configuration
+file for Linux.
+ * @param {*} fontsList
+ * @param {*} profilePath
+ * @param {*} differentOs
+ * @returns
+ */
 export const composeFonts = async (fontsList = [], profilePath, differentOs = false) => {
   if (!(fontsList.length && profilePath)) {
     return;
@@ -128,6 +144,12 @@ export const composeFonts = async (fontsList = [], profilePath, differentOs = fa
   }
 };
 
+/**
+ * copyFontsConfigFile: copies a font configuration file to a specified GoLogin
+browser profile for Linux.
+ * @param {*} profilePath
+ * @returns
+ */
 export const copyFontsConfigFile = async (profilePath) => {
   if (!profilePath) {
     return;
@@ -141,6 +163,14 @@ export const copyFontsConfigFile = async (profilePath) => {
   await writeFile(join(defaultFolderPath, 'fonts_config'), result);
 };
 
+/**
+ * setExtPathsAndRemoveDeleted: sets extension paths and removes deleted
+extensions for a specified GoLogin browser profile.
+ * @param {*} settings
+ * @param {*} profileExtensionsCheckRes
+ * @param {*} profileId
+ * @returns
+ */
 export const setExtPathsAndRemoveDeleted = (settings = {}, profileExtensionsCheckRes = [], profileId = '') => {
   const formattedLocalExtArray = profileExtensionsCheckRes.map((el) => {
     const [extFolderName = ''] = el.split(sep).reverse();
@@ -232,6 +262,13 @@ export const setExtPathsAndRemoveDeleted = (settings = {}, profileExtensionsChec
   return Promise.all(promises).then(() => extensionsSettings);
 };
 
+/**
+ * setOriginalExtPaths: sets original extension paths for a specified GoLogin
+browser profile.
+ * @param {*} settings
+ * @param {*} originalExtensionsFolder
+ * @returns
+ */
 export const setOriginalExtPaths = async (settings = {}, originalExtensionsFolder = '') => {
   if (!originalExtensionsFolder) {
     return null;
@@ -287,6 +324,12 @@ export const setOriginalExtPaths = async (settings = {}, originalExtensionsFolde
   return extensionsSettings;
 };
 
+/**
+ * recalculateId: recalculates the ID of an extension for a specified GoLogin
+browser profile.
+ * @param {*} param0
+ * @returns
+ */
 export const recalculateId = async ({ localExtObj, extensionId, extensionsSettings, currentExtSettings }) => {
   if (currentExtSettings.manifest?.key) {
     return extensionId;
