@@ -19,8 +19,8 @@ const { access, readFile, writeFile, mkdir, readdir, copyFile, rename } = _promi
 // module's file. The value of __filename is obtained by calling the fileURLToPath
 // function provided by the built-in url module, passing the import.meta.url
 // property as its argument
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = dirname(__filename);
 
 const FONTS_URL = 'https://fonts.gologin.com/';
 const FONTS_DIR_NAME = 'fonts';

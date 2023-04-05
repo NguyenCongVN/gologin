@@ -40,7 +40,7 @@ import {
 import ExtensionsManager from './extensions/extensions-manager.js';
 import { archiveProfile } from './profile/profile-archiver.js';
 import { API_URL } from './utils/common.js';
-import { get, isPortReachable } from './utils/utils.js';
+import { get, isPortReachable, killProcessUsingPort } from './utils/utils.js';
 
 const { access, unlink, writeFile, readFile } = _promises;
 
@@ -198,7 +198,6 @@ export class GoLogin {
 
     return false;
   }
-
   /** The clearProfileFiles() function is an asynchronous function that deletes
 * all files associated with the current profile stored in the temporary
 * directory. It uses the rimraf package to recursively delete the profile
@@ -223,6 +222,7 @@ export class GoLogin {
       () => null,
     );
   }
+
   /**
    * The commitProfile function commits any changes made to the profile by
    * uploading a zip file containing the profile data to a remote server.
@@ -346,11 +346,13 @@ export class GoLogin {
 * @param {any} options
 * @returns {any}
 */
-  async create(options) {
+  async create(options = {}) {
     debug('createProfile', options);
 
     const fingerprint = await this.getRandomFingerprint(options);
     debug('fingerprint=', fingerprint);
+
+    console.log('fingerprint', fingerprint);
 
     if (fingerprint.statusCode === 500) {
       throw new Error('no valid random fingerprint check os param');
@@ -362,11 +364,14 @@ export class GoLogin {
 
     const { navigator, fonts, webGLMetadata, webRTC } = fingerprint;
     let deviceMemory = navigator.deviceMemory || 2;
+
+    console.log('navigator.deviceMemory', navigator.deviceMemory);
+
     if (deviceMemory < 1) {
       deviceMemory = 1;
     }
 
-    navigator.deviceMemory = deviceMemory * 1024;
+    navigator.deviceMemory = deviceMemory;
     webGLMetadata.mode = webGLMetadata.mode === 'noise' ? 'mask' : 'off';
 
     const json = {
@@ -385,7 +390,7 @@ export class GoLogin {
       },
     };
 
-    const user_agent = options.navigator?.userAgent;
+    const user_agent = options.navigator ? options.navigator.userAgent : '';
     const orig_user_agent = json.navigator.userAgent;
     Object.keys(options).map((e) => {
       json[e] = options[e];
@@ -395,6 +400,7 @@ export class GoLogin {
     }
     // console.log('profileOptions', json);
 
+    console.log('Starting profile creation');
     const response = await requests.post(`${API_URL}/browser`, {
       headers: {
         Authorization: `Bearer ${this.access_token}`,
@@ -402,6 +408,8 @@ export class GoLogin {
       },
       json,
     });
+
+    console.log('profile creation response');
 
     if (response.statusCode === 400) {
       throw new Error(
@@ -412,6 +420,7 @@ export class GoLogin {
     }
 
     if (response.statusCode === 500) {
+      console.log('response.body', response.body);
       throw new Error(
         `gologin failed account creation with status code, ${response.statusCode}`,
       );
@@ -477,9 +486,10 @@ export class GoLogin {
     const profilePath = join(this.tmpdir, `gologin_profile_${this.profile_id}`);
     let profile;
     let profile_folder;
+    // before creating a new profile, we need to drop the old one
     rimraf(profilePath, () => null);
     debug('-', profilePath, 'dropped');
-    profile = await this.getProfile();
+    profile = await this.getProfile(null, local);
     const { navigator = {}, fonts, os: profileOs } = profile;
     this.fontsMasking = fonts?.enableMasking;
     this.profileOs = profileOs;
@@ -968,18 +978,20 @@ export class GoLogin {
     const id = profile_id || this.profile_id;
     debug('getProfile', this.access_token, id);
 
+    console.log(`local: ${local}`);
+
     // if local, get profile from file
     if (local) {
       // read profile from file
       // read from file named profile_local_ + profile_id
 
       // check that file is exists
-      if (!existsSync(this.profileArgumentLocalPath)) {
+      if (!existsSync(this.profileArgumentLocalPath())) {
         throw new Error('Profile not found');
       }
 
       const profile = readFileSync(
-        this.profileArgumentLocalPath,
+        this.profileArgumentLocalPath(),
         'utf8',
       );
 
@@ -994,6 +1006,8 @@ export class GoLogin {
     });
 
     debug('profileResponse', profileResponse.statusCode, profileResponse.body);
+
+    console.log();
 
     if (profileResponse.statusCode === 404) {
       throw new Error(JSON.parse(profileResponse.body).message);
@@ -1127,7 +1141,7 @@ export class GoLogin {
    * @param {any} options
    * @returns {any}
    */
-  async getRandomFingerprint(options) {
+  async getRandomFingerprint(options = {}) {
     let os = 'lin';
 
     if (options.os) {
@@ -1321,6 +1335,14 @@ export class GoLogin {
    */
   getViewPort() {
     return { ...this.resolution };
+  }
+
+  /**
+   * Get the path to the temporary directory where the ziped profile is stored.
+   * @returns
+   */
+  getZipProfilePath() {
+    return join(this.tmpdir, `gologin_${this.profile_id}.zip`);
   }
 
   /**
@@ -1839,8 +1861,7 @@ directory where the profile arguments file is stored.
     return { status: 'success', wsUrl };
   }
 
-  /*
-* Starts a remote browser instance with the profile and returns the WebSocket
+  /** Starts a remote browser instance with the profile and returns the WebSocket
 * URL.
 *
 * @memberof GoLogin
@@ -1996,11 +2017,8 @@ directory where the profile arguments file is stored.
       throw new Error('Empty GoLogin port');
     }
 
-    spawn('fuser', ['-k TERM', `-n tcp ${this.port}`], {
-      shell: true,
-    });
-
-    debug('browser killed');
+    await killProcessUsingPort(this.port);
+    console.log('Process killed successfully.');
   }
 
   /**

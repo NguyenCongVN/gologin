@@ -1,7 +1,10 @@
 /* eslint-disable max-len */
-// This code imports the GoLogin class from ../src/gologin.js and creates an instance of it with an access token.
-// Then, it uses the instance to create a new browser profile with specified options such as name, operating system, navigator settings, and proxy settings.
-// After creating the profile, it updates the name of the profile and gets its current profile information.
+// This code imports the GoLogin class from ../src/gologin.js and creates an
+// instance of it with an access token.
+// Then, it uses the instance to create a new browser profile with specified
+// options such as name, operating system, navigator settings, and proxy settings.
+// After creating the profile, it updates the name of the profile and gets its
+// current profile information.
 // Finally, it comments out the line to delete the created profile.
 
 import GoLogin from '../src/gologin.js';
@@ -17,28 +20,12 @@ const delay = (ms) => new Promise((res) => setTimeout(res, ms));
   // next parameters are required for creating
 
   const profile_id = await GL.create({
-    name: 'profile_mac',
-    os: 'mac',
-    navigator: {
-      language: 'enUS',
-      userAgent: 'random', // get random user agent for selected os
-      resolution: '1024x768',
-      platform: 'mac',
-    },
-    proxyEnabled: false,
-    proxy: {
-      mode: 'none',
-    },
+
   });
 
   console.log('profile id=', profile_id);
 
-  await GL.update({
-    id: profile_id,
-    name: 'profile_mac2',
-  });
-
-  const profile = await GL.getProfile(profile_id);
+  const profile = await GL.getProfile(profile_id, false);
 
   console.log('new profile name=', profile.name);
 
