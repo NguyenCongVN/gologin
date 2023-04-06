@@ -33,7 +33,7 @@ import {
   uploadCookies,
 } from './browser/browser-user-data-manager.js';
 import {
-  getChunckedInsertValues,
+  getChunckedInsertValuesAndInsert,
   getDB,
   loadCookiesFromFile,
 } from './cookies/cookies-manager.js';
@@ -109,6 +109,12 @@ export class GoLogin {
       }
     }
 
+    /**
+    * The cookiesFilePath property is a string that holds the path to the
+    cookies
+    * cookie file is a sqlite database file that stores cookies for the
+    browser.
+    **/
     this.cookiesFilePath = join(
       this.tmpdir,
       `gologin_profile_${this.profile_id}`,
@@ -2065,8 +2071,7 @@ profile from the GoLogin API using the getProfile method with no parameters.
 
 The function then updates the profile with the provided options. If the
 navigator field is included in the options, it updates the navigator property
-of
-the profile. Otherwise, it updates all other properties except navigator.
+of the profile. Otherwise, it updates all other properties except navigator.
 
 After updating the profile, the function writes the updated profile to the
 profile file if it's a local profile by calling the writeFileSync method with
@@ -2078,8 +2083,7 @@ GoLogin API with the updated profile JSON in the request body and the user's
 authorization token in the request headers.
 
 The function returns the updated profile if it's a local profile or the
-response
-body from the GoLogin API if it's not a local profile
+response body from the GoLogin API if it's not a local profile
 *
 * @memberof GoLogin
 * @param {any} options
@@ -2204,8 +2208,7 @@ given profile to a SQLite database file located at this.cookiesFilePath. Here's
 what it does:
 
 First, it gets the cookies for the current profile using the getCookies()
-method
-and stores them in a variable called cookies.
+method and stores them in a variable called cookies.
 If there are no cookies in the cookies array, the method returns early and does
 not write anything to the database.
 The method then maps over the cookies array and creates a new array called
@@ -2224,9 +2227,9 @@ and passing in the corresponding query parameters from the queryParams array
 returned by getChunckedInsertValues().
 Finally, the method closes the database connection using the close() method of
 the SQLite database connection object.
+
 The end result is that all of the cookies for the current profile are written
-to
-a SQLite database file at this.cookiesFilePath.
+to a SQLite database file at this.cookiesFilePath.
 *
 * @memberof GoLogin
 * @returns {any}*/
@@ -2243,18 +2246,12 @@ a SQLite database file at this.cookiesFilePath.
 
     let db;
     try {
-      db = await getDB(this.cookiesFilePath, false);
-      const chunckInsertValues = getChunckedInsertValues(resultCookies);
-
-      for (const [query, queryParams] of chunckInsertValues) {
-        const insertStmt = await db.prepare(query);
-        await insertStmt.run(queryParams);
-        await insertStmt.finalize();
-      }
+      db = getDB(this.cookiesFilePath, false);
+      getChunckedInsertValuesAndInsert(resultCookies);
     } catch (error) {
       console.log(error.message);
     } finally {
-      (await db) && db.close();
+      db && db.close();
     }
   }
 }

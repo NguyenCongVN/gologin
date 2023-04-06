@@ -1,6 +1,4 @@
-import { open } from 'sqlite';
-import sqlite3 from 'sqlite3';
-const { Database, OPEN_READONLY } = sqlite3;
+import Database from 'better-sqlite3';
 
 /**
 MAX_SQLITE_VARIABLES is a constant defined in the code with a value of
@@ -57,27 +55,24 @@ method from the sqlite package and the Database class from the sqlite3 package.
  */
 export const getDB = (filePath, readOnly = true) => {
   const connectionOpts = {
-    filename: filePath,
-    driver: Database,
+    readonly: readOnly,
   };
 
-  if (readOnly) {
-    connectionOpts.mode = OPEN_READONLY;
-  }
-
-  return open(connectionOpts);
+  return new Database(filePath, connectionOpts);
 };
 
-/** getChunckedInsertValues(cookiesArr): A function that takes an array of
+/** getChunckedInsertValues(cookiesArr, db): A function that takes an array of
 cookies and returns an array of queries and their corresponding
 parameters that can be used to insert the cookies into a SQLite
 database. This function chunks the cookies array into smaller arrays of
 up to 76 cookies (the maximum number of variables allowed in a SQLite
 query) and generates a separate query for each chunk. The queries use
 placeholders for the cookie values to avoid SQL injection vulnerabilities.
+After that, the function uses the run method from the sqlite3 package to
+execute the queries and insert the cookies into the database.
 * @param {*} cookiesArr
  **/
-export const getChunckedInsertValues = (cookiesArr) => {
+export const getChunckedInsertValuesAndInsert = (cookiesArr, db) => {
   const todayUnix = Math.floor(new Date().getTime() / 1000.0);
   const chunckedCookiesArr = chunk(cookiesArr, MAX_SQLITE_VARIABLES);
 
@@ -102,6 +97,8 @@ export const getChunckedInsertValues = (cookiesArr) => {
         ? Number(expirationDate !== 0)
         : Number(!cookie.session);
 
+      // This likely means that the cookie should be immediately deleted, as it has
+      // already expired or should no longer be stored persistently.
       if (/^(\.)?mail.google.com$/.test(cookie.domain) && cookie.name === 'COMPASS') {
         expirationDate = 0;
         isPersistent = 0;
@@ -131,6 +128,10 @@ export const getChunckedInsertValues = (cookiesArr) => {
       ];
     });
 
+    // modify it here
+    const insertCookies = db.prepare(query);
+    insertCookies.run(queryParams);
+
     return [query, queryParams];
   });
 };
@@ -141,11 +142,10 @@ export const getChunckedInsertValues = (cookiesArr) => {
 // rows to cookie objects that include properties such as name, value, domain,
 // path, httpOnly, secure, session, and expirationDate.
 export const loadCookiesFromFile = async (filePath) => {
-  let db;
+  const db = getDB(filePath);
   const cookies = [];
 
   try {
-    db = await getDB(filePath);
     const cookiesRows = await db.all('select * from cookies');
     for (const row of cookiesRows) {
       const {
@@ -179,15 +179,19 @@ export const loadCookiesFromFile = async (filePath) => {
   } catch (error) {
     console.log(error);
   } finally {
-    await db && db.close();
+    db.close();
   }
 
   return cookies;
 };
 
-// unixToLDAP(unixtime): A function that converts a Unix timestamp (in seconds) to
-// a Microsoft LDAP timestamp (in 100-nanosecond intervals since January 1, 1601
-// UTC).
+/**
+* unixToLDAP(unixtime): A function that converts a Unix timestamp (in
+seconds) to a Microsoft LDAP timestamp (in 100-nanosecond intervals
+since January 1, 1601 UTC).
+* @param {*} unixtime
+* @returns
+ **/
 export const unixToLDAP = (unixtime) => {
   if (unixtime === 0) {
     return unixtime;
@@ -218,8 +222,15 @@ export const ldapToUnix = (ldap) => {
   return (_ldap / 10000 + win32filetime) / 1000;
 };
 
-// buildCookieURL(domain, secure, path): A function that takes a cookie's domain,
-// secure flag, and path and returns the URL that the cookie applies to
+/**
+* buildCookieURL(domain, secure, path): A function that takes a cookie's
+domain,
+secure flag, and path and returns the URL that the cookie applies to
+* @param {*} domain
+* @param {*} secure
+* @param {*} path
+* @returns
+ **/
 export const buildCookieURL = (domain, secure, path) => {
   let domainWithoutDot = domain;
   if (domain.startsWith('.')) {

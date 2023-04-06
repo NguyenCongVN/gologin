@@ -16,18 +16,16 @@
   "dependencies": {
     "adm-zip": "^0.5.1",
     "archiver": "^3.1.1",
+    "better-sqlite3": "^8.2.0",
     "child_process": "^1.0.2",
     "decompress": "^4.2.1",
     "decompress-unzip": "^4.0.1",
     "form-data": "^3.0.0",
     "progress": "^2.0.3",
-    "puppeteer-core": "^19.8.3",
     "request": "^2.88.2",
     "requestretry": "^4.1.0",
     "rimraf": "^3.0.2",
-    "simple-proxy-agent": "^1.1.0",
-    "sqlite": "^4.0.23",
-    "sqlite3": "^5.0.2"
+    "simple-proxy-agent": "^1.1.0"
   },
   "bugs": {
     "url": "https://github.com/gologinapp/gologin/issues"
@@ -52,6 +50,7 @@
     "jest": "^29.5.0",
     "prettier": "2.8.7",
     "prettier-plugin-jsdoc": "^0.4.2",
+    "puppeteer-core": "^19.8.3",
     "supertest": "^6.3.3",
     "ts-jest": "^29.1.0"
   },
