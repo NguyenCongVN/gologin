@@ -4,10 +4,6 @@
   "description": "A high-level API to control Orbita browser over GoLogin API",
   "main": "./src/gologin.js",
   "typings": "@types/gologin",
-  "files": [
-    "src/**/*.js",
-    "@types/**/*.d.ts"
-  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gologinapp/gologin.git"
